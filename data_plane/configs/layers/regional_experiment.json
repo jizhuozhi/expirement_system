@@ -1,0 +1,75 @@
+{
+  "layer_id": "regional_experiment",
+  "version": "v1",
+  "priority": 150,
+  "hash_key": "user_id",
+  "salt": "regional_v1",
+  "enabled": true,
+  "buckets": {
+    "0": "north_america",
+    "2500": "europe",
+    "5000": "asia",
+    "7500": "other"
+  },
+  "groups": {
+    "north_america": {
+      "service": "content",
+      "params": {
+        "cdn": "us-east",
+        "language": "en",
+        "currency": "USD"
+      },
+      "rule": {
+        "type": "field",
+        "field": "country",
+        "op": "in",
+        "values": ["US", "CA", "MX"]
+      }
+    },
+    "europe": {
+      "service": "content",
+      "params": {
+        "cdn": "eu-west",
+        "language": "en",
+        "currency": "EUR"
+      },
+      "rule": {
+        "type": "field",
+        "field": "country",
+        "op": "in",
+        "values": ["UK", "DE", "FR", "IT", "ES"]
+      }
+    },
+    "asia": {
+      "service": "content",
+      "params": {
+        "cdn": "ap-east",
+        "language": "zh",
+        "currency": "CNY"
+      },
+      "rule": {
+        "type": "field",
+        "field": "country",
+        "op": "in",
+        "values": ["CN", "JP", "KR", "SG"]
+      }
+    },
+    "other": {
+      "service": "content",
+      "params": {
+        "cdn": "global",
+        "language": "en",
+        "currency": "USD"
+      },
+      "rule": {
+        "type": "not",
+        "child": {
+          "type": "field",
+          "field": "country",
+          "op": "in",
+          "values": ["US", "CA", "MX", "UK", "DE", "FR", "IT", "ES", "CN", "JP", "KR", "SG"]
+        }
+      }
+    }
+  }
+}

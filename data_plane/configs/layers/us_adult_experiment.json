@@ -1,0 +1,63 @@
+{
+  "layer_id": "us_adult_experiment",
+  "version": "v1",
+  "priority": 100,
+  "hash_key": "user_id",
+  "salt": "us_adult_v1_salt",
+  "enabled": true,
+  "buckets": {
+    "0": "control",
+    "5000": "treatment"
+  },
+  "groups": {
+    "control": {
+      "service": "recommendation",
+      "params": {
+        "algorithm": "baseline",
+        "timeout_ms": 100
+      },
+      "rule": {
+        "type": "and",
+        "children": [
+          {
+            "type": "field",
+            "field": "country",
+            "op": "eq",
+            "values": ["US"]
+          },
+          {
+            "type": "field",
+            "field": "age",
+            "op": "gte",
+            "values": [18]
+          }
+        ]
+      }
+    },
+    "treatment": {
+      "service": "recommendation",
+      "params": {
+        "algorithm": "ml_v2",
+        "timeout_ms": 150,
+        "personalization": true
+      },
+      "rule": {
+        "type": "and",
+        "children": [
+          {
+            "type": "field",
+            "field": "country",
+            "op": "eq",
+            "values": ["US"]
+          },
+          {
+            "type": "field",
+            "field": "age",
+            "op": "gte",
+            "values": [18]
+          }
+        ]
+      }
+    }
+  }
+}

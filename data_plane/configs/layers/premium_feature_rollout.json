@@ -1,0 +1,52 @@
+{
+  "layer_id": "premium_feature_rollout",
+  "version": "v1",
+  "priority": 200,
+  "hash_key": "user_id",
+  "enabled": true,
+  "buckets": {
+    "0": "premium_beta",
+    "1000": "premium_stable"
+  },
+  "groups": {
+    "premium_beta": {
+      "service": "app",
+      "params": {
+        "feature_x": true,
+        "feature_x_version": "beta",
+        "analytics_enabled": true
+      },
+      "rule": {
+        "type": "and",
+        "children": [
+          {
+            "type": "field",
+            "field": "premium",
+            "op": "eq",
+            "values": [true]
+          },
+          {
+            "type": "field",
+            "field": "app_version",
+            "op": "gte",
+            "values": ["2.0.0"]
+          }
+        ]
+      }
+    },
+    "premium_stable": {
+      "service": "app",
+      "params": {
+        "feature_x": true,
+        "feature_x_version": "stable",
+        "analytics_enabled": false
+      },
+      "rule": {
+        "type": "field",
+        "field": "premium",
+        "op": "eq",
+        "values": [true]
+      }
+    }
+  }
+}
