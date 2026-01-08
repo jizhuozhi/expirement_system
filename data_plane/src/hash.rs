@@ -3,17 +3,10 @@ use crate::layer::BUCKET_SIZE;
 
 /// Hash a key with salt to a bucket index
 /// Salt ensures different layers produce different distributions for the same key
-pub fn hash_to_bucket_with_salt(key: &str, salt: &str) -> u32 {
+pub fn hash_to_bucket(key: &str, salt: &str) -> u32 {
     // Concatenate key and salt, then hash
     let combined = format!("{}{}", key, salt);
     let hash = xxh3_64(combined.as_bytes());
-    (hash % BUCKET_SIZE as u64) as u32
-}
-
-/// Hash a key to a bucket index (deprecated, use hash_to_bucket_with_salt)
-#[deprecated(note = "Use hash_to_bucket_with_salt to avoid biased distribution")]
-pub fn hash_to_bucket(key: &str) -> u32 {
-    let hash = xxh3_64(key.as_bytes());
     (hash % BUCKET_SIZE as u64) as u32
 }
 
@@ -24,7 +17,7 @@ mod tests {
     
     #[test]
     fn test_hash_to_bucket_with_salt() {
-        let bucket = hash_to_bucket_with_salt("user_123", "layer1_v1");
+        let bucket = hash_to_bucket("user_123", "layer1_v1");
         assert!(bucket < BUCKET_SIZE);
     }
     
@@ -32,16 +25,16 @@ mod tests {
     fn test_hash_determinism() {
         let key = "user_456";
         let salt = "experiment_v2";
-        let bucket1 = hash_to_bucket_with_salt(key, salt);
-        let bucket2 = hash_to_bucket_with_salt(key, salt);
+        let bucket1 = hash_to_bucket(key, salt);
+        let bucket2 = hash_to_bucket(key, salt);
         assert_eq!(bucket1, bucket2);
     }
     
     #[test]
     fn test_different_salts_produce_different_buckets() {
         let key = "user_789";
-        let bucket1 = hash_to_bucket_with_salt(key, "layer1_v1");
-        let bucket2 = hash_to_bucket_with_salt(key, "layer2_v1");
+        let bucket1 = hash_to_bucket(key, "layer1_v1");
+        let bucket2 = hash_to_bucket(key, "layer2_v1");
         
         // With high probability, different salts should produce different buckets
         // This test may occasionally fail due to hash collision, but probability is very low
@@ -58,7 +51,7 @@ mod tests {
             let key = format!("user_{}", i);
             
             for (idx, salt) in salts.iter().enumerate() {
-                let bucket = hash_to_bucket_with_salt(&key, salt);
+                let bucket = hash_to_bucket(&key, salt);
                 distributions[idx].insert(bucket);
             }
         }
@@ -77,7 +70,7 @@ mod tests {
         
         for i in 0..100000 {
             let key = format!("user_{}", i);
-            let bucket = hash_to_bucket_with_salt(&key, salt);
+            let bucket = hash_to_bucket(&key, salt);
             buckets[bucket as usize] += 1;
         }
         

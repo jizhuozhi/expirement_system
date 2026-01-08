@@ -1,0 +1,27 @@
+{
+  "vid": 2002,
+  "service": "recommendation",
+  "params": {
+    "algorithm": "ml_v2",
+    "timeout_ms": 150,
+    "model_version": "v2.0",
+    "personalization": true
+  },
+  "rule": {
+    "type": "and",
+    "children": [
+      {
+        "type": "field",
+        "field": "country",
+        "op": "in",
+        "values": ["US", "CA", "UK"]
+      },
+      {
+        "type": "field",
+        "field": "age",
+        "op": "gte",
+        "values": [18]
+      }
+    ]
+  }
+}

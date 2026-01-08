@@ -1,0 +1,22 @@
+{
+  "eid": 3000,
+  "service": "ranker",
+  "rule": null,
+  "variants": [
+    {
+      "vid": 3001,
+      "params": {
+        "ranker_type": "linear",
+        "features": ["relevance", "freshness"]
+      }
+    },
+    {
+      "vid": 3002,
+      "params": {
+        "ranker_type": "neural",
+        "features": ["relevance", "freshness", "user_history"],
+        "model_path": "/models/ranker_v2.pt"
+      }
+    }
+  ]
+}

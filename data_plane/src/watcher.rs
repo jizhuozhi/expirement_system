@@ -1,3 +1,4 @@
+use crate::catalog::ExperimentCatalog;
 use crate::layer::LayerManager;
 use anyhow::Result;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -6,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 /// Watch layers directory for changes and hot reload
-pub async fn watch_layers(manager: Arc<LayerManager>) -> Result<()> {
+pub async fn watch_layers(manager: Arc<LayerManager>, catalog: Arc<ExperimentCatalog>) -> Result<()> {
     let (tx, mut rx) = mpsc::channel(100);
     
     let layers_dir = manager.layers_dir.clone();
@@ -31,14 +32,14 @@ pub async fn watch_layers(manager: Arc<LayerManager>) -> Result<()> {
         match event.kind {
             EventKind::Create(_) | EventKind::Modify(_) => {
                 for path in event.paths {
-                    if let Err(e) = handle_file_change(&manager, &path).await {
+                    if let Err(e) = handle_file_change(&manager, &catalog, &path).await {
                         tracing::error!("Failed to handle file change {:?}: {}", path, e);
                     }
                 }
             }
             EventKind::Remove(_) => {
                 for path in event.paths {
-                    if let Err(e) = handle_file_remove(&manager, &path).await {
+                    if let Err(e) = handle_file_remove(&manager, &catalog, &path).await {
                         tracing::error!("Failed to handle file remove {:?}: {}", path, e);
                     }
                 }
@@ -50,7 +51,7 @@ pub async fn watch_layers(manager: Arc<LayerManager>) -> Result<()> {
     Ok(())
 }
 
-async fn handle_file_change(manager: &LayerManager, path: &Path) -> Result<()> {
+async fn handle_file_change(manager: &LayerManager, catalog: &ExperimentCatalog, path: &Path) -> Result<()> {
     if !path.is_file() {
         return Ok(());
     }
@@ -67,7 +68,7 @@ async fn handle_file_change(manager: &LayerManager, path: &Path) -> Result<()> {
                 // Add small delay to ensure file write is complete
                 tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                 
-                match manager.load_layer(&layer_id, path).await {
+                match manager.load_layer(&layer_id, path, catalog).await {
                     Ok(_) => {
                         tracing::info!("Hot reloaded layer: {}", layer_id);
                         crate::metrics::LAYER_RELOAD_TOTAL.inc();
@@ -84,13 +85,13 @@ async fn handle_file_change(manager: &LayerManager, path: &Path) -> Result<()> {
     Ok(())
 }
 
-async fn handle_file_remove(manager: &LayerManager, path: &Path) -> Result<()> {
+async fn handle_file_remove(manager: &LayerManager, catalog: &ExperimentCatalog, path: &Path) -> Result<()> {
     if let Some(file_stem) = path.file_stem() {
         let layer_id = file_stem.to_string_lossy();
         
         tracing::info!("Detected removal of layer file: {:?}", path);
         
-        if let Err(e) = manager.remove_layer(&layer_id).await {
+        if let Err(e) = manager.remove_layer(&layer_id, catalog).await {
             tracing::error!("Failed to remove layer {}: {}", layer_id, e);
         } else {
             tracing::info!("Removed layer: {}", layer_id);

@@ -9,15 +9,18 @@ pub enum ExperimentError {
     InvalidVersion(String),
 
     #[error("Hash key not found in request: {0}")]
+    #[allow(dead_code)]
     HashKeyNotFound(String),
 
     #[error("Bucket not found: {0}")]
+    #[allow(dead_code)]
     BucketNotFound(u32),
 
     #[error("Group not found: {0}")]
     GroupNotFound(String),
 
     #[error("Service mismatch: expected {expected}, got {actual}")]
+    #[allow(dead_code)]
     ServiceMismatch { expected: String, actual: String },
 
     #[error("Invalid parameter format: {0}")]
@@ -27,6 +30,7 @@ pub enum ExperimentError {
     InvalidRule(String),
 
     #[error("Rule evaluation failed: {0}")]
+    #[allow(dead_code)]
     RuleEvaluationFailed(String),
 
     #[error("IO error: {0}")]

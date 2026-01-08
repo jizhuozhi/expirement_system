@@ -1,0 +1,9 @@
+{
+  "vid": 2001,
+  "service": "recommendation",
+  "params": {
+    "algorithm": "baseline",
+    "timeout_ms": 100,
+    "model_version": "v1.0"
+  }
+}

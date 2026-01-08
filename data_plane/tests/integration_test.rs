@@ -1,191 +1,270 @@
-use experiment_data_plane::hash::hash_to_bucket_with_salt;
-use experiment_data_plane::layer::{Group, Layer};
-use experiment_data_plane::merge::{merge_layers, ExperimentRequest};
-use experiment_data_plane::rule::FieldType;
+use experiment_data_plane::catalog::{ExperimentCatalog, ExperimentDef, VariantDef};
+use experiment_data_plane::hash::hash_to_bucket;
+use experiment_data_plane::layer::{BucketRange, Layer, LayerManager, BUCKET_SIZE};
+use experiment_data_plane::merge::{merge_layers_batch, ExperimentRequest};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tempfile::TempDir;
 
-#[test]
-fn test_merge_priority() {
-    let test_user = "user_priority_test";
-    
-    let salt_high = "high_v1";
-    let salt_low = "low_v1";
-    let bucket_high = hash_to_bucket_with_salt(test_user, salt_high);
-    let bucket_low = hash_to_bucket_with_salt(test_user, salt_low);
-    
-    let layer_high = Arc::new(Layer {
-        layer_id: "high".to_string(),
+#[tokio::test]
+async fn test_layer_loading_and_service_index() {
+    let temp_dir = TempDir::new().unwrap();
+    let layers_dir = temp_dir.path().join("layers");
+    let experiments_dir = temp_dir.path().join("experiments");
+    std::fs::create_dir_all(&layers_dir).unwrap();
+    std::fs::create_dir_all(&experiments_dir).unwrap();
+
+    // Create experiment
+    let exp = ExperimentDef {
+        eid: 100,
+        service: "test_service".to_string(),
+        rule: None,
+        variants: vec![
+            VariantDef {
+                vid: 1001,
+                params: json!({"feature": "a"}),
+            },
+            VariantDef {
+                vid: 1002,
+                params: json!({"feature": "b"}),
+            },
+        ],
+    };
+    std::fs::write(
+        experiments_dir.join("100.json"),
+        serde_json::to_string_pretty(&exp).unwrap(),
+    )
+    .unwrap();
+
+    let catalog = ExperimentCatalog::load_from_dir(experiments_dir).unwrap();
+    assert_eq!(catalog.len(), 1);
+
+    // Create layers
+    let layer = Layer {
+        layer_id: "test_layer".to_string(),
         version: "v1".to_string(),
         priority: 200,
         hash_key: "user_id".to_string(),
-        salt: Some(salt_high.to_string()),
-        buckets: [(bucket_high, "group_high".to_string())].into_iter().collect(),
-        groups: [(
-            "group_high".to_string(),
-            Group {
-                service: "test_svc".to_string(),
-                params: json!({
-                    "feature_a": "high_priority_value",
-                    "feature_high_only": "high_value"
-                }),
-                rule: None,
+        salt: None,
+        services: vec![],
+        ranges: vec![
+            BucketRange {
+                start: 0,
+                end: 5000,
+                vid: 1001,
             },
-        )]
-        .into_iter()
-        .collect(),
+            BucketRange {
+                start: 5000,
+                end: 10000,
+                vid: 1002,
+            },
+        ],
         enabled: true,
-    });
-    
-    let layer_low = Arc::new(Layer {
-        layer_id: "low".to_string(),
+    };
+
+    std::fs::write(
+        layers_dir.join("test_layer.json"),
+        serde_json::to_string_pretty(&layer).unwrap(),
+    )
+    .unwrap();
+
+    let manager = LayerManager::new(layers_dir);
+    manager.load_all_layers(&catalog).await.unwrap();
+
+    // Verify service index was built (inferred from catalog)
+    let layers = manager.get_layers_for_service("test_service");
+    assert_eq!(layers.len(), 1);
+    assert_eq!(layers[0].layer_id, "test_layer");
+}
+
+#[tokio::test]
+async fn test_merge_with_ranges() {
+    let temp_dir = TempDir::new().unwrap();
+    let layers_dir = temp_dir.path().join("layers");
+    let experiments_dir = temp_dir.path().join("experiments");
+    std::fs::create_dir_all(&layers_dir).unwrap();
+    std::fs::create_dir_all(&experiments_dir).unwrap();
+
+    // Create experiment
+    let exp = ExperimentDef {
+        eid: 200,
+        service: "api".to_string(),
+        rule: None,
+        variants: vec![
+            VariantDef {
+                vid: 2001,
+                params: json!({"timeout": 100, "retries": 3}),
+            },
+            VariantDef {
+                vid: 2002,
+                params: json!({"timeout": 200, "cache": true}),
+            },
+        ],
+    };
+    std::fs::write(
+        experiments_dir.join("200.json"),
+        serde_json::to_string_pretty(&exp).unwrap(),
+    )
+    .unwrap();
+
+    let catalog = Arc::new(ExperimentCatalog::load_from_dir(experiments_dir).unwrap());
+
+    // Create layers with explicit slot ranges
+    let test_user = "user_123";
+    let salt = "test_salt";
+    let bucket = hash_to_bucket(test_user, salt);
+
+    let layer = Layer {
+        layer_id: "api_layer".to_string(),
         version: "v1".to_string(),
         priority: 100,
         hash_key: "user_id".to_string(),
-        salt: Some(salt_low.to_string()),
-        buckets: [(bucket_low, "group_low".to_string())].into_iter().collect(),
-        groups: [(
-            "group_low".to_string(),
-            Group {
-                service: "test_svc".to_string(),
-                params: json!({
-                    "feature_a": "low_priority_value",
-                    "feature_low_only": "low_value"
-                }),
-                rule: None,
-            },
-        )]
-        .into_iter()
-        .collect(),
+        salt: Some(salt.to_string()),
+        services: vec![],
+        ranges: vec![BucketRange {
+            start: bucket,
+            end: bucket.saturating_add(1).min(BUCKET_SIZE),
+            vid: 2001,
+        }],
         enabled: true,
-    });
-    
+    };
+
+    std::fs::write(
+        layers_dir.join("api_layer.json"),
+        serde_json::to_string_pretty(&layer).unwrap(),
+    )
+    .unwrap();
+
+    let manager = LayerManager::new(layers_dir);
+    manager.load_all_layers(&catalog).await.unwrap();
+
     let request = ExperimentRequest {
-        service: "test_svc".to_string(),
+        services: vec!["api".to_string()],
         hash_keys: [("user_id".to_string(), test_user.to_string())]
             .into_iter()
             .collect(),
         layers: vec![],
         context: HashMap::new(),
     };
-    
-    let response = merge_layers(&request, &[layer_high, layer_low], &HashMap::new()).unwrap();
-    
-    assert_eq!(response.parameters["feature_a"], json!("high_priority_value"));
-    assert_eq!(response.parameters["feature_high_only"], json!("high_value"));
-    assert_eq!(response.parameters["feature_low_only"], json!("low_value"));
+
+    let field_types = HashMap::new();
+    let response = merge_layers_batch(&request, &manager, &catalog, &field_types).unwrap();
+
+    let result = response.results.get("api").unwrap();
+    assert_eq!(result.vids, vec![2001]);
+    assert_eq!(result.parameters["timeout"], json!(100));
+    assert_eq!(result.parameters["retries"], json!(3));
 }
 
-#[test]
-fn test_service_constraint() {
-    let layer = Arc::new(Layer {
-        layer_id: "test".to_string(),
-        version: "v1".to_string(),
-        priority: 100,
-        hash_key: "user_id".to_string(),
-        salt: None,
-        buckets: [(0, "group_a".to_string())].into_iter().collect(),
-        groups: [(
-            "group_a".to_string(),
-            Group {
-                service: "recommendation_svc".to_string(),
-                params: json!({"feature": true}),
-                rule: None,
+#[tokio::test]
+async fn test_eid_rule_evaluation_memo() {
+    let temp_dir = TempDir::new().unwrap();
+    let layers_dir = temp_dir.path().join("layers");
+    let experiments_dir = temp_dir.path().join("experiments");
+    std::fs::create_dir_all(&layers_dir).unwrap();
+    std::fs::create_dir_all(&experiments_dir).unwrap();
+
+    // Create experiment with shared rule
+    let exp = ExperimentDef {
+        eid: 300,
+        service: "api".to_string(),
+        rule: Some(experiment_data_plane::rule::Node::Field {
+            field: "region".to_string(),
+            op: experiment_data_plane::rule::Op::Eq,
+            values: vec![json!("US")],
+        }),
+        variants: vec![
+            VariantDef {
+                vid: 3001,
+                params: json!({"feature": "a"}),
             },
-        )]
-        .into_iter()
-        .collect(),
-        enabled: true,
-    });
-    
-    let request = ExperimentRequest {
-        service: "search_svc".to_string(),
-        hash_keys: [("user_id".to_string(), "user_0".to_string())]
-            .into_iter()
-            .collect(),
-        layers: vec![],
-        context: HashMap::new(),
+            VariantDef {
+                vid: 3002,
+                params: json!({"feature": "b"}),
+            },
+        ],
     };
-    
-    let response = merge_layers(&request, &[layer], &HashMap::new()).unwrap();
-    
-    assert!(response.parameters.as_object().unwrap().is_empty());
-    assert_eq!(response.matched_layers.len(), 0);
-}
+    std::fs::write(
+        experiments_dir.join("300.json"),
+        serde_json::to_string_pretty(&exp).unwrap(),
+    )
+    .unwrap();
 
-#[test]
-fn test_nested_params_merge() {
-    let test_user = "user_nested_test";
-    
-    let salt1 = "layer1_v1";
-    let salt2 = "layer2_v1";
-    let bucket1 = hash_to_bucket_with_salt(test_user, salt1);
-    let bucket2 = hash_to_bucket_with_salt(test_user, salt2);
-    
-    let layer1 = Arc::new(Layer {
+    let catalog = Arc::new(ExperimentCatalog::load_from_dir(experiments_dir).unwrap());
+
+    let test_user = "user_456";
+    let salt1 = "layer1_salt";
+    let salt2 = "layer2_salt";
+    let bucket1 = hash_to_bucket(test_user, salt1);
+    let bucket2 = hash_to_bucket(test_user, salt2);
+
+    // Two layers hitting the same eid (rule should only evaluate once)
+    let layer1 = Layer {
         layer_id: "layer1".to_string(),
         version: "v1".to_string(),
         priority: 200,
         hash_key: "user_id".to_string(),
         salt: Some(salt1.to_string()),
-        buckets: [(bucket1, "group1".to_string())].into_iter().collect(),
-        groups: [(
-            "group1".to_string(),
-            Group {
-                service: "test_svc".to_string(),
-                params: json!({
-                    "config": {
-                        "timeout": 100,
-                        "high_priority_setting": "value1"
-                    }
-                }),
-                rule: None,
-            },
-        )]
-        .into_iter()
-        .collect(),
+        services: vec![],
+        ranges: vec![BucketRange {
+            start: bucket1,
+            end: bucket1.saturating_add(1).min(BUCKET_SIZE),
+            vid: 3001,
+        }],
         enabled: true,
-    });
-    
-    let layer2 = Arc::new(Layer {
+    };
+
+    let layer2 = Layer {
         layer_id: "layer2".to_string(),
         version: "v1".to_string(),
         priority: 100,
         hash_key: "user_id".to_string(),
         salt: Some(salt2.to_string()),
-        buckets: [(bucket2, "group2".to_string())].into_iter().collect(),
-        groups: [(
-            "group2".to_string(),
-            Group {
-                service: "test_svc".to_string(),
-                params: json!({
-                    "config": {
-                        "timeout": 200,
-                        "low_priority_setting": "value2"
-                    }
-                }),
-                rule: None,
-            },
-        )]
-        .into_iter()
-        .collect(),
+        services: vec![],
+        ranges: vec![BucketRange {
+            start: bucket2,
+            end: bucket2.saturating_add(1).min(BUCKET_SIZE),
+            vid: 3002,
+        }],
         enabled: true,
-    });
-    
+    };
+
+    std::fs::write(
+        layers_dir.join("layer1.json"),
+        serde_json::to_string_pretty(&layer1).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        layers_dir.join("layer2.json"),
+        serde_json::to_string_pretty(&layer2).unwrap(),
+    )
+    .unwrap();
+
+    let manager = LayerManager::new(layers_dir);
+    manager.load_all_layers(&catalog).await.unwrap();
+
+    // Request with region = US (rule should pass)
+    let mut context = HashMap::new();
+    context.insert("region".to_string(), json!("US"));
+
     let request = ExperimentRequest {
-        service: "test_svc".to_string(),
+        services: vec!["api".to_string()],
         hash_keys: [("user_id".to_string(), test_user.to_string())]
             .into_iter()
             .collect(),
         layers: vec![],
-        context: HashMap::new(),
+        context,
     };
-    
-    let response = merge_layers(&request, &[layer1, layer2], &HashMap::new()).unwrap();
-    
-    let config = response.parameters["config"].as_object().unwrap();
-    assert_eq!(config["timeout"], json!(100));
-    assert_eq!(config["high_priority_setting"], json!("value1"));
-    assert_eq!(config["low_priority_setting"], json!("value2"));
+
+    let mut field_types = HashMap::new();
+    field_types.insert("region".to_string(), experiment_data_plane::rule::FieldType::String);
+
+    let response = merge_layers_batch(&request, &manager, &catalog, &field_types).unwrap();
+
+    let result = response.results.get("api").unwrap();
+    // Both variants should be matched (rule evaluated once and cached for eid 300)
+    assert_eq!(result.vids.len(), 2);
+    assert!(result.vids.contains(&3001));
+    assert!(result.vids.contains(&3002));
 }

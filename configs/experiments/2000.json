@@ -1,0 +1,36 @@
+{
+  "eid": 2000,
+  "service": "recommendation",
+  "rule": null,
+  "variants": [
+    {
+      "vid": 2001,
+      "params": {
+        "algorithm": "baseline",
+        "timeout_ms": 100,
+        "model_version": "v1.0"
+      }
+    },
+    {
+      "vid": 2002,
+      "params": {
+        "algorithm": "ml_v2",
+        "timeout_ms": 150,
+        "model_config": {
+          "batch_size": 32
+        }
+      }
+    },
+    {
+      "vid": 2003,
+      "params": {
+        "algorithm": "ml_v3",
+        "timeout_ms": 200,
+        "model_config": {
+          "batch_size": 64,
+          "embedding_dim": 256
+        }
+      }
+    }
+  ]
+}

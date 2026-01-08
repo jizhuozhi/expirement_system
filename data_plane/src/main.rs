@@ -1,3 +1,4 @@
+mod catalog;
 mod config;
 mod error;
 mod layer;
@@ -29,24 +30,30 @@ async fn main() -> Result<()> {
     let config = config::Config::from_env()?;
     tracing::info!("Configuration loaded: {:?}", config);
 
-    // Initialize layer manager
+    // Step 1: Load experiment catalog first (happens-before layer loading)
+    tracing::info!("Loading experiment catalog from {:?}", config.experiments_dir);
+    let catalog = Arc::new(catalog::ExperimentCatalog::load_from_dir(config.experiments_dir.clone())?);
+    tracing::info!("Experiment catalog loaded: {} experiments", catalog.len());
+
+    // Step 2: Initialize layer manager
     let layer_manager = Arc::new(layer::LayerManager::new(config.layers_dir.clone()));
 
-    // Load initial layers
-    layer_manager.load_all_layers().await?;
+    // Step 3: Load initial layers (requires catalog for index building)
+    layer_manager.load_all_layers(&catalog).await?;
     tracing::info!("Initial layers loaded");
 
-    // Start file watcher for hot reload
+    // Start file watcher for hot reload (layers only)
     let watcher_manager = layer_manager.clone();
+    let watcher_catalog = catalog.clone();
     let watcher_handle = tokio::spawn(async move {
-        if let Err(e) = watcher::watch_layers(watcher_manager).await {
+        if let Err(e) = watcher::watch_layers(watcher_manager, watcher_catalog).await {
             tracing::error!("Watcher error: {}", e);
         }
     });
 
     // Start HTTP server
     let server_handle = tokio::spawn(async move {
-        if let Err(e) = server::run_server(config, layer_manager).await {
+        if let Err(e) = server::run_server(config, layer_manager, catalog).await {
             tracing::error!("Server error: {}", e);
         }
     });

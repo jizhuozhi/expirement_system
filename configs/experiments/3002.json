@@ -1,0 +1,9 @@
+{
+  "vid": 3002,
+  "service": "ranker_svc",
+  "params": {
+    "ranker_type": "gbdt",
+    "features": ["basic_score", "user_profile", "context"],
+    "model_path": "/models/gbdt_v2.model"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "layer_id": "ranker_experiment",
+  "version": "v1",
+  "priority": 100,
+  "hash_key": "query_id",
+  "salt": "ranker_exp_2026",
+  "enabled": true,
+  "ranges": [
+    { "start": 0, "end": 5000, "vid": 3001 },
+    { "start": 5000, "end": 10000, "vid": 3002 }
+  ]
+}

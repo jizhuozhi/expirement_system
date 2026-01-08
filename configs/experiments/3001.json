@@ -1,0 +1,8 @@
+{
+  "vid": 3001,
+  "service": "ranker_svc",
+  "params": {
+    "ranker_type": "linear",
+    "features": ["basic_score"]
+  }
+}

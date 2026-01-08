@@ -64,6 +64,7 @@ pub enum Node {
 
 impl Node {
     /// Validate node structure against field type map
+    #[allow(dead_code)]
     pub fn validate(&self, field_types: &HashMap<String, FieldType>) -> Result<()> {
         match self {
             Node::And { children } => {
@@ -173,6 +174,7 @@ impl Node {
 }
 
 /// Validate that a value matches the expected field type
+#[allow(dead_code)]
 fn validate_value_type(value: &serde_json::Value, field_type: &FieldType, field_name: &str) -> Result<()> {
     use serde_json::Value;
     

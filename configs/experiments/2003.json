@@ -1,0 +1,28 @@
+{
+  "vid": 2003,
+  "service": "recommendation",
+  "params": {
+    "algorithm": "ml_v3",
+    "timeout_ms": 200,
+    "model_version": "v3.0",
+    "personalization": true,
+    "deep_learning": true
+  },
+  "rule": {
+    "type": "and",
+    "children": [
+      {
+        "type": "field",
+        "field": "premium",
+        "op": "eq",
+        "values": [true]
+      },
+      {
+        "type": "field",
+        "field": "app_version",
+        "op": "gte",
+        "values": ["2.0.0"]
+      }
+    ]
+  }
+}

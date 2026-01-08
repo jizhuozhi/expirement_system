@@ -1,0 +1,13 @@
+{
+  "layer_id": "recommendation_experiment",
+  "version": "v1",
+  "priority": 200,
+  "hash_key": "user_id",
+  "salt": "rec_exp_2026_q1",
+  "enabled": true,
+  "ranges": [
+    { "start": 0, "end": 5000, "vid": 2001 },
+    { "start": 5000, "end": 7500, "vid": 2002 },
+    { "start": 7500, "end": 10000, "vid": 2003 }
+  ]
+}
