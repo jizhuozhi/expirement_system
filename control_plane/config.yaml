@@ -1,0 +1,24 @@
+server:
+  host: 0.0.0.0
+  port: 8081
+
+database:
+  host: localhost
+  port: 5432
+  user: postgres
+  password: postgres
+  database: experiment_control
+  sslmode: disable
+
+oidc:
+  issuer: http://localhost:8081
+  jwt_secret: your-secret-key-change-me-in-production
+  access_ttl: 3600      # 1 hour
+  refresh_ttl: 604800   # 7 days
+
+grpc:
+  host: 0.0.0.0
+  port: 9091
+
+log:
+  level: info

@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package config;
+
+option go_package = "github.com/georgeji/experiment-system/control-plane/proto;proto";
+
+// 配置推送服务
+service ConfigPushService {
+  // 订阅配置变更（长连接流式推送）
+  rpc SubscribeConfig(SubscribeRequest) returns (stream ConfigChange);
+  
+  // 全量拉取配置
+  rpc GetFullConfig(GetFullConfigRequest) returns (FullConfig);
+  
+  // 健康检查
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// 订阅请求
+message SubscribeRequest {
+  string data_plane_id = 1;  // 数据面实例 ID
+  string version = 2;         // 当前配置版本
+  repeated string services = 3; // 订阅的服务列表（空=全部）
+}
+
+// 配置变更
+message ConfigChange {
+  enum ChangeType {
+    FULL_RELOAD = 0;   // 全量重载
+    LAYER_UPDATE = 1;  // Layer 更新
+    LAYER_DELETE = 2;  // Layer 删除
+    EXPERIMENT_UPDATE = 3;  // Experiment 更新
+    EXPERIMENT_DELETE = 4;  // Experiment 删除
+  }
+  
+  ChangeType type = 1;
+  string version = 2;          // 新版本号
+  int64 timestamp = 3;         // 变更时间戳
+  
+  // 根据 type 选择填充
+  repeated Layer layers = 4;
+  repeated string deleted_layer_ids = 5;
+  repeated Experiment experiments = 6;
+  repeated int32 deleted_experiment_ids = 7;
+}
+
+// 全量配置请求
+message GetFullConfigRequest {
+  string data_plane_id = 1;
+  repeated string services = 2;  // 需要的服务（空=全部）
+}
+
+// 全量配置响应
+message FullConfig {
+  string version = 1;
+  int64 timestamp = 2;
+  repeated Layer layers = 3;
+  repeated Experiment experiments = 4;
+}
+
+// Layer 定义
+message Layer {
+  string layer_id = 1;
+  string version = 2;
+  int32 priority = 3;
+  string hash_key = 4;
+  string salt = 5;
+  bool enabled = 6;
+  repeated BucketRange ranges = 7;
+  repeated string services = 8;  // 适用的服务列表
+  map<string, string> metadata = 9;
+}
+
+// Bucket Range
+message BucketRange {
+  uint32 start = 1;
+  uint32 end = 2;
+  int32 vid = 3;
+}
+
+// Experiment 定义
+message Experiment {
+  int32 eid = 1;
+  string service = 2;
+  RuleNode rule = 3;
+  repeated Variant variants = 4;
+  map<string, string> metadata = 5;
+}
+
+// 规则节点（AST 风格）
+message RuleNode {
+  string op = 1;  // 操作符: "and", "or", "not", "eq", "neq", "in", "not_in", "gt", "gte", "lt", "lte", "like", "not_like"
+  
+  // 对于比较操作符（eq, in, gt等）
+  string field = 2;
+  repeated string values = 3;
+  
+  // 对于逻辑操作符（and, or, not）
+  repeated RuleNode children = 4;
+}
+
+// Variant 变体
+message Variant {
+  int32 vid = 1;
+  string params_json = 2;  // JSON 格式的参数
+}
+
+// 健康检查
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string version = 2;
+  int64 timestamp = 3;
+}

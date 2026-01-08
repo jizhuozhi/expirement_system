@@ -147,8 +147,17 @@ fn bench_merge_param_depth(c: &mut Criterion) {
     group.sample_size(50);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
-    for depth in [1, 2, 3, 5, 8, 10, 15].iter() {
-        let (_temp_catalog, catalog) = create_catalog_with_random_params(100, *depth, 5);
+    // 深度大时减少宽度，避免指数爆炸
+    let test_cases = vec![
+        (1, 5),   // 5 fields
+        (2, 5),   // 30 fields
+        (3, 5),   // 155 fields
+        (5, 3),   // 363 fields (改为3宽度)
+        (8, 2),   // 510 fields (改为2宽度)
+    ];
+
+    for (depth, width) in test_cases.iter() {
+        let (_temp_catalog, catalog) = create_catalog_with_random_params(100, *depth, *width);
         let (_temp_layers, manager) = rt.block_on(create_layers(100, &catalog));
 
         let request = ExperimentRequest {
@@ -162,8 +171,8 @@ fn bench_merge_param_depth(c: &mut Criterion) {
         let field_types = HashMap::new();
 
         group.bench_with_input(
-            BenchmarkId::from_parameter(depth),
-            depth,
+            BenchmarkId::from_parameter(format!("d{}_w{}", depth, width)),
+            &(depth, width),
             |b, _| {
                 b.iter(|| {
                     merge_layers_batch(
