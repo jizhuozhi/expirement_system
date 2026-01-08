@@ -42,6 +42,7 @@ arc-swap = "1.6"
 [dev-dependencies]
 criterion = "0.5"
 tempfile = "3.8"
+rand = "0.8"
 
 [features]
 default = ["http"]
@@ -49,5 +50,13 @@ http = []
 grpc = ["tonic", "prost"]
 
 [[bench]]
-name = "merge_benchmark"
+name = "layer_management_bench"
+harness = false
+
+[[bench]]
+name = "rule_evaluation_bench"
+harness = false
+
+[[bench]]
+name = "param_merge_bench"
 harness = false

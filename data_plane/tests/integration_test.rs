@@ -141,11 +141,10 @@ async fn test_merge_with_ranges() {
 
     let request = ExperimentRequest {
         services: vec!["api".to_string()],
-        hash_keys: [("user_id".to_string(), test_user.to_string())]
+        context: [("user_id".to_string(), json!(test_user))]
             .into_iter()
             .collect(),
         layers: vec![],
-        context: HashMap::new(),
     };
 
     let field_types = HashMap::new();
@@ -246,15 +245,13 @@ async fn test_eid_rule_evaluation_memo() {
 
     // Request with region = US (rule should pass)
     let mut context = HashMap::new();
+    context.insert("user_id".to_string(), json!(test_user));
     context.insert("region".to_string(), json!("US"));
 
     let request = ExperimentRequest {
         services: vec!["api".to_string()],
-        hash_keys: [("user_id".to_string(), test_user.to_string())]
-            .into_iter()
-            .collect(),
-        layers: vec![],
         context,
+        layers: vec![],
     };
 
     let mut field_types = HashMap::new();

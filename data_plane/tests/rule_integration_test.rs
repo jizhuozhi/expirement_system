@@ -69,15 +69,13 @@ async fn test_rule_based_experiment() {
     // Test 1: Rule passes (country = CN)
     {
         let mut context = HashMap::new();
+        context.insert("user_id".to_string(), json!(test_user));
         context.insert("country".to_string(), json!("CN"));
 
         let request = ExperimentRequest {
             services: vec!["api".to_string()],
-            hash_keys: [("user_id".to_string(), test_user.to_string())]
-                .into_iter()
-                .collect(),
-            layers: vec![],
             context,
+            layers: vec![],
         };
 
         let mut field_types = HashMap::new();
@@ -93,15 +91,13 @@ async fn test_rule_based_experiment() {
     // Test 2: Rule fails (country = US)
     {
         let mut context = HashMap::new();
+        context.insert("user_id".to_string(), json!(test_user));
         context.insert("country".to_string(), json!("US"));
 
         let request = ExperimentRequest {
             services: vec!["api".to_string()],
-            hash_keys: [("user_id".to_string(), test_user.to_string())]
-                .into_iter()
-                .collect(),
-            layers: vec![],
             context,
+            layers: vec![],
         };
 
         let mut field_types = HashMap::new();

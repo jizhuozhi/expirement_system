@@ -9,36 +9,24 @@ use std::collections::HashMap;
 /// Experiment request
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct ExperimentRequest {
-    /// List of interested services (supports batch query)
     pub services: Vec<String>,
-
-    pub hash_keys: HashMap<String, String>,
-
-    #[serde(default)]
-    pub layers: Vec<String>, // Optional: specific layers to use
-
-    /// Context for rule evaluation
-    #[serde(default)]
     pub context: HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub layers: Vec<String>,
 }
 
 /// Per-service result
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ServiceResult {
     pub parameters: Value,
-
-    /// VIDs that contributed to this result (染色标识)
     pub vids: Vec<i64>,
-
-    /// Layer IDs for debugging
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub matched_layers: Vec<String>,
 }
 
-/// Experiment response - grouped by service
+/// Experiment response
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ExperimentResponse {
-    /// Results grouped by service
     pub results: HashMap<String, ServiceResult>,
 }
 
@@ -60,7 +48,6 @@ pub fn merge_layers_batch(
     Ok(ExperimentResponse { results })
 }
 
-/// Merge layers for a single service
 fn merge_layers_for_service(
     service: &str,
     request: &ExperimentRequest,
@@ -72,14 +59,9 @@ fn merge_layers_for_service(
     let mut matched_vids = Vec::new();
     let mut matched_layers = Vec::new();
 
-    // Memo for eid-level rule evaluation (same eid only evaluates once per request)
-    let mut eid_rule_cache: HashMap<i64, bool> = HashMap::new();
-
-    // Get layers for this service using inverted index
     let layers = if request.layers.is_empty() {
         layer_manager.get_layers_for_service(service)
     } else {
-        // Filter by requested layers
         request
             .layers
             .iter()
@@ -87,14 +69,28 @@ fn merge_layers_for_service(
             .collect()
     };
 
-    // Process layers (already sorted by priority via inverted index)
     for layer in layers {
-        // Get hash key value
-        let hash_key_value = match request.hash_keys.get(&layer.hash_key) {
-            Some(v) => v,
+        let hash_key_value = match request.context.get(&layer.hash_key) {
+            Some(Value::String(s)) => s.as_str(),
+            Some(Value::Number(n)) => {
+                tracing::warn!(
+                    "Hash key '{}' is a number, converting to string for layer '{}'",
+                    layer.hash_key,
+                    layer.layer_id
+                );
+                &n.to_string()
+            }
+            Some(_) => {
+                tracing::warn!(
+                    "Hash key '{}' must be a string or number for layer '{}', skipping",
+                    layer.hash_key,
+                    layer.layer_id
+                );
+                continue;
+            }
             None => {
                 tracing::warn!(
-                    "Hash key '{}' not found for layer '{}', skipping",
+                    "Hash key '{}' not found in context for layer '{}', skipping",
                     layer.hash_key,
                     layer.layer_id
                 );
@@ -102,17 +98,13 @@ fn merge_layers_for_service(
             }
         };
 
-        // Calculate bucket with layer-specific salt
         let salt = layer.get_salt();
         let bucket = hash_to_bucket(hash_key_value, &salt);
 
-        // Match slot → vid via ranges
         let Some(vid) = layer.get_vid(bucket) else {
             continue;
         };
 
-        // Lookup variant definition (catalog is the source of truth)
-        // Returns (eid, service, rule, params)
         let Some((eid, variant_service, rule_opt, params)) = catalog.get_variant(vid) else {
             tracing::warn!(
                 "Missing vid {} in catalog (layer: {}, bucket: {}), skipping",
@@ -123,33 +115,23 @@ fn merge_layers_for_service(
             continue;
         };
 
-        // Check service constraint
         if variant_service != service {
             continue;
         }
 
-        // Evaluate rule if present (with eid-level memo)
         if let Some(rule) = rule_opt {
-            let rule_passed = if let Some(&cached) = eid_rule_cache.get(&eid) {
-                // Use cached result
-                cached
-            } else {
-                // Evaluate and cache
-                let result = match rule.evaluate(&request.context, field_types) {
-                    Ok(passed) => passed,
-                    Err(e) => {
-                        tracing::warn!(
-                            "Rule evaluation failed for eid {} (layer {}, vid {}): {}",
-                            eid,
-                            layer.layer_id,
-                            vid,
-                            e
-                        );
-                        false
-                    }
-                };
-                eid_rule_cache.insert(eid, result);
-                result
+            let rule_passed = match rule.evaluate(&request.context, field_types) {
+                Ok(passed) => passed,
+                Err(e) => {
+                    tracing::warn!(
+                        "Rule evaluation failed for eid {} (layer {}, vid {}): {}",
+                        eid,
+                        layer.layer_id,
+                        vid,
+                        e
+                    );
+                    false
+                }
             };
 
             if !rule_passed {
@@ -157,7 +139,6 @@ fn merge_layers_for_service(
             }
         }
 
-        // Merge parameters (higher priority layer's keys take precedence)
         merge_params_prioritized(&mut final_params, params)?;
         matched_vids.push(vid);
         matched_layers.push(layer.layer_id.clone());
@@ -170,27 +151,18 @@ fn merge_layers_for_service(
     })
 }
 
-/// Merge parameters with deterministic rules (higher priority layer wins)
-///
-/// NEW LOGIC: Higher priority layer's keys take precedence.
-/// - For scalars/arrays: if key exists in target (higher priority), skip source value
-/// - For nested objects: recursively merge
+/// Merge parameters with priority (higher priority layer wins for same keys)
 fn merge_params_prioritized(target: &mut serde_json::Map<String, Value>, source: &Value) -> Result<()> {
     match source {
         Value::Object(source_map) => {
             for (key, value) in source_map {
                 match (target.get_mut(key), value) {
-                    // Both are objects - recursively merge
                     (Some(Value::Object(target_obj)), Value::Object(source_obj)) => {
                         let mut target_map = target_obj.clone();
                         merge_params_prioritized(&mut target_map, &Value::Object(source_obj.clone()))?;
                         target.insert(key.clone(), Value::Object(target_map));
                     }
-                    // Higher priority layer already set this key - skip
-                    (Some(_), _) => {
-                        // Do nothing (higher priority wins)
-                    }
-                    // New key - insert
+                    (Some(_), _) => {}
                     (None, _) => {
                         target.insert(key.clone(), value.clone());
                     }
@@ -205,12 +177,6 @@ fn merge_params_prioritized(target: &mut serde_json::Map<String, Value>, source:
     }
 
     Ok(())
-}
-
-/// Old merge_params function (kept for backward compatibility in tests)
-#[allow(dead_code)]
-fn merge_params(target: &mut serde_json::Map<String, Value>, source: &Value) -> Result<()> {
-    merge_params_prioritized(target, source)
 }
 
 #[cfg(test)]
@@ -232,7 +198,7 @@ mod tests {
             "c": 3
         });
 
-        merge_params(&mut target, &source).unwrap();
+        merge_params_prioritized(&mut target, &source).unwrap();
 
         assert_eq!(target.get("a"), Some(&json!({"x": 1, "y": 2})));
         assert_eq!(target.get("b"), Some(&json!(2)));
@@ -246,9 +212,8 @@ mod tests {
 
         let source = json!({"key": "low_priority"});
 
-        merge_params(&mut target, &source).unwrap();
+        merge_params_prioritized(&mut target, &source).unwrap();
 
-        // Higher priority value should remain
         assert_eq!(target.get("key"), Some(&json!("high_priority")));
     }
 
@@ -338,11 +303,12 @@ mod tests {
 
         let request = ExperimentRequest {
             services: vec!["test_svc".to_string()],
-            hash_keys: [("user_id".to_string(), test_user.to_string())]
-                .into_iter()
-                .collect(),
+            context: [
+                ("user_id".to_string(), json!(test_user)),
+            ]
+            .into_iter()
+            .collect(),
             layers: vec![],
-            context: HashMap::new(),
         };
 
         let field_types = HashMap::new();
