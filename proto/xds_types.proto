@@ -1,0 +1,172 @@
+syntax = "proto3";
+
+package experiment.config.v1;
+
+import "google/protobuf/any.proto";
+import "google/protobuf/timestamp.proto";
+import "config_push.proto";
+
+option go_package = "github.com/georgeji/experiment-system/proto/config/v1;configv1";
+
+// [simplified comment]
+// import "config_push.proto";
+
+// [simplified comment]
+// xDS Resource Type URLs and Constants
+// [simplified comment]
+
+// ResourceTypeUrls - xDS 资源类型 URL 常量
+// [simplified comment]
+message ResourceTypeUrls {
+  // Layer 资源类型
+  // [simplified comment]
+  string LAYER_TYPE_URL = 1 [deprecated = true]; // [simplified comment]
+  
+  // Experiment 资源类型  
+  // [simplified comment]
+  string EXPERIMENT_TYPE_URL = 2 [deprecated = true]; // [simplified comment]
+}
+
+// [simplified comment]
+// const LAYER_TYPE_URL = "type.googleapis.com/experiment.config.v1.Layer";
+// const EXPERIMENT_TYPE_URL = "type.googleapis.com/experiment.config.v1.Experiment";
+
+// [simplified comment]
+// xDS Subscription Management
+// [simplified comment]
+
+// SubscriptionState - 订阅状态管理
+message SubscriptionState {
+  // [simplified comment]
+  string type_url = 1;
+  
+  // [simplified comment]
+  repeated string resource_names = 2;
+  
+  // [simplified comment]
+  string version_info = 3;
+  
+  // [simplified comment]
+  string last_nonce = 4;
+  
+  // [simplified comment]
+  SubscriptionStatus status = 5;
+  
+  // [simplified comment]
+  optional Status error = 6;
+  
+  // [simplified comment]
+  google.protobuf.Timestamp last_updated = 7;
+}
+
+// SubscriptionStatus - 订阅状态枚举
+enum SubscriptionStatus {
+  SUBSCRIPTION_STATUS_UNSPECIFIED = 0;
+  SUBSCRIPTION_STATUS_REQUESTED = 1;    // [simplified comment]
+  SUBSCRIPTION_STATUS_ACKED = 2;        // [simplified comment]
+  SUBSCRIPTION_STATUS_NACKED = 3;       // [simplified comment]
+}
+
+// [simplified comment]
+// xDS Metadata and Extensions
+// [simplified comment]
+
+// XdsMetadata - xDS 元数据
+message XdsMetadata {
+  // [simplified comment]
+  string client_version = 1;
+  
+  // [simplified comment]
+  repeated string supported_features = 2;
+  
+  // [simplified comment]
+  map<string, string> client_config = 3;
+  
+  // [simplified comment]
+  map<string, google.protobuf.Any> extensions = 4;
+}
+
+// [simplified comment]
+// Load Reporting (可选的负载报告功能)
+// [simplified comment]
+
+// LoadReport - 负载报告（可选功能）
+message LoadReport {
+  // [simplified comment]
+  string node_id = 1;
+  
+  // [simplified comment]
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+  
+  // [simplified comment]
+  RequestStats request_stats = 4;
+  
+  // [simplified comment]
+  ResourceUsageStats resource_stats = 5;
+}
+
+// RequestStats - 请求统计
+message RequestStats {
+  // [simplified comment]
+  uint64 total_requests = 1;
+  
+  // [simplified comment]
+  uint64 successful_requests = 2;
+  
+  // [simplified comment]
+  uint64 failed_requests = 3;
+  
+  // [simplified comment]
+  double average_latency_ms = 4;
+  
+  // P99 延迟（毫秒）
+  double p99_latency_ms = 5;
+}
+
+// ResourceUsageStats - 资源使用统计
+message ResourceUsageStats {
+  // CPU 使用率（百分比）
+  double cpu_usage_percent = 1;
+  
+  // [simplified comment]
+  uint64 memory_usage_bytes = 2;
+  
+  // [simplified comment]
+  uint32 active_connections = 3;
+  
+  // [simplified comment]
+  uint64 config_size_bytes = 4;
+}
+
+// [simplified comment]
+// Debugging and Observability
+// [simplified comment]
+
+// DebugInfo - 调试信息
+message DebugInfo {
+  // [simplified comment]
+  DebugLevel level = 1;
+  
+  // [simplified comment]
+  string message = 2;
+  
+  // [simplified comment]
+  google.protobuf.Timestamp timestamp = 3;
+  
+  // [simplified comment]
+  repeated string related_resources = 4;
+  
+  // [simplified comment]
+  optional string stack_trace = 5;
+}
+
+// DebugLevel - 调试级别
+enum DebugLevel {
+  DEBUG_LEVEL_UNSPECIFIED = 0;
+  DEBUG_LEVEL_TRACE = 1;
+  DEBUG_LEVEL_DEBUG = 2;
+  DEBUG_LEVEL_INFO = 3;
+  DEBUG_LEVEL_WARN = 4;
+  DEBUG_LEVEL_ERROR = 5;
+}

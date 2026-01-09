@@ -66,7 +66,7 @@ async fn test_rule_based_experiment() {
     let manager = LayerManager::new(layers_dir);
     manager.load_all_layers(&catalog).await.unwrap();
 
-    // Test 1: Rule passes (country = CN)
+    // Test implementation
     {
         let mut context = HashMap::new();
         context.insert("user_id".to_string(), json!(test_user));
@@ -88,7 +88,7 @@ async fn test_rule_based_experiment() {
         assert_eq!(result.parameters["feature"], json!("china_special"));
     }
 
-    // Test 2: Rule fails (country = US)
+    // Test implementation
     {
         let mut context = HashMap::new();
         context.insert("user_id".to_string(), json!(test_user));
@@ -106,7 +106,7 @@ async fn test_rule_based_experiment() {
         let response = merge_layers_batch(&request, &manager, &catalog, &field_types).unwrap();
         let result = response.results.get("api").unwrap();
 
-        // Rule failed, no vids should be matched
+        // Test implementation
         assert_eq!(result.vids.len(), 0);
     }
 }

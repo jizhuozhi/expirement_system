@@ -7,10 +7,14 @@ use serde_json::json;
 use std::collections::HashMap;
 use tempfile::TempDir;
 
-/// Create random nested params with specified depth and width
-fn create_random_nested_params(depth: usize, fields_per_level: usize, seed: usize) -> serde_json::Value {
+/// Benchmark implementation
+fn create_random_nested_params(
+    depth: usize,
+    fields_per_level: usize,
+    seed: usize,
+) -> serde_json::Value {
     let mut rng = rand::thread_rng();
-    
+
     if depth == 0 {
         return match rng.gen_range(0..3) {
             0 => json!(rng.gen_range(0..1000)),
@@ -22,13 +26,16 @@ fn create_random_nested_params(depth: usize, fields_per_level: usize, seed: usiz
     let mut obj = serde_json::Map::new();
     for i in 0..fields_per_level {
         let key = format!("field_{}_{}", depth, i);
-        obj.insert(key, create_random_nested_params(depth - 1, fields_per_level, seed * 10 + i));
+        obj.insert(
+            key,
+            create_random_nested_params(depth - 1, fields_per_level, seed * 10 + i),
+        );
     }
-    
+
     json!(obj)
 }
 
-/// Create catalog with random params
+/// Benchmark implementation
 fn create_catalog_with_random_params(
     num_experiments: usize,
     param_depth: usize,
@@ -40,7 +47,7 @@ fn create_catalog_with_random_params(
 
     for i in 0..num_experiments {
         let params = create_random_nested_params(param_depth, fields_per_level, i);
-        
+
         let exp = ExperimentDef {
             eid: (100 + i) as i64,
             service: "test_service".to_string(),
@@ -62,7 +69,7 @@ fn create_catalog_with_random_params(
     (temp_dir, catalog)
 }
 
-/// Create layers
+/// Benchmark implementation
 async fn create_layers(num_layers: usize, catalog: &ExperimentCatalog) -> (TempDir, LayerManager) {
     let temp_dir = TempDir::new().unwrap();
     let layers_dir = temp_dir.path().join("layers");
@@ -101,7 +108,7 @@ async fn create_layers(num_layers: usize, catalog: &ExperimentCatalog) -> (TempD
     (temp_dir, manager)
 }
 
-/// Benchmark: Merge with increasing layers
+/// Benchmark implementation
 fn bench_merge_layer_count(c: &mut Criterion) {
     let mut group = c.benchmark_group("merge_layer_count");
     group.sample_size(50);
@@ -141,7 +148,7 @@ fn bench_merge_layer_count(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark: Merge with increasing param depth
+/// Benchmark implementation
 fn bench_merge_param_depth(c: &mut Criterion) {
     let mut group = c.benchmark_group("merge_param_depth");
     group.sample_size(50);
@@ -149,11 +156,11 @@ fn bench_merge_param_depth(c: &mut Criterion) {
 
     // 深度大时减少宽度，避免指数爆炸
     let test_cases = vec![
-        (1, 5),   // 5 fields
-        (2, 5),   // 30 fields
-        (3, 5),   // 155 fields
-        (5, 3),   // 363 fields (改为3宽度)
-        (8, 2),   // 510 fields (改为2宽度)
+        (1, 5), // Benchmark implementation
+        (2, 5), // Benchmark implementation
+        (3, 5), // Benchmark implementation
+        (5, 3), // Benchmark implementation
+        (8, 2), // Benchmark implementation
     ];
 
     for (depth, width) in test_cases.iter() {
@@ -190,7 +197,7 @@ fn bench_merge_param_depth(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark: Merge with increasing field width
+/// Benchmark implementation
 fn bench_merge_param_width(c: &mut Criterion) {
     let mut group = c.benchmark_group("merge_param_width");
     group.sample_size(50);
@@ -210,27 +217,23 @@ fn bench_merge_param_width(c: &mut Criterion) {
 
         let field_types = HashMap::new();
 
-        group.bench_with_input(
-            BenchmarkId::from_parameter(width),
-            width,
-            |b, _| {
-                b.iter(|| {
-                    merge_layers_batch(
-                        black_box(&request),
-                        black_box(&manager),
-                        black_box(&catalog),
-                        black_box(&field_types),
-                    )
-                    .unwrap();
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(width), width, |b, _| {
+            b.iter(|| {
+                merge_layers_batch(
+                    black_box(&request),
+                    black_box(&manager),
+                    black_box(&catalog),
+                    black_box(&field_types),
+                )
+                .unwrap();
+            });
+        });
     }
 
     group.finish();
 }
 
-/// Benchmark: Extreme param merge (combined stress)
+/// Benchmark implementation
 fn bench_extreme_param_merge(c: &mut Criterion) {
     let mut group = c.benchmark_group("extreme_param_merge");
     group.sample_size(20);
@@ -246,7 +249,8 @@ fn bench_extreme_param_merge(c: &mut Criterion) {
     ];
 
     for (label, num_layers, depth, width) in test_cases.iter() {
-        let (_temp_catalog, catalog) = create_catalog_with_random_params(*num_layers, *depth, *width);
+        let (_temp_catalog, catalog) =
+            create_catalog_with_random_params(*num_layers, *depth, *width);
         let (_temp_layers, manager) = rt.block_on(create_layers(*num_layers, &catalog));
 
         let request = ExperimentRequest {
@@ -259,32 +263,28 @@ fn bench_extreme_param_merge(c: &mut Criterion) {
 
         let field_types = HashMap::new();
 
-        group.bench_with_input(
-            BenchmarkId::from_parameter(label),
-            label,
-            |b, _| {
-                b.iter(|| {
-                    merge_layers_batch(
-                        black_box(&request),
-                        black_box(&manager),
-                        black_box(&catalog),
-                        black_box(&field_types),
-                    )
-                    .unwrap();
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(label), label, |b, _| {
+            b.iter(|| {
+                merge_layers_batch(
+                    black_box(&request),
+                    black_box(&manager),
+                    black_box(&catalog),
+                    black_box(&field_types),
+                )
+                .unwrap();
+            });
+        });
     }
 
     group.finish();
 }
 
-/// Benchmark: Merge with conflicting keys (override scenarios)
+/// Benchmark implementation
 fn bench_merge_conflicts(c: &mut Criterion) {
     let mut group = c.benchmark_group("merge_conflicts");
     let rt = tokio::runtime::Runtime::new().unwrap();
 
-    // Create catalog where all params have overlapping keys
+    // Benchmark implementation
     let temp_dir = TempDir::new().unwrap();
     let experiments_dir = temp_dir.path().join("experiments");
     std::fs::create_dir_all(&experiments_dir).unwrap();
@@ -346,7 +346,7 @@ fn bench_merge_conflicts(c: &mut Criterion) {
             },
         );
 
-        // Clean up for next iteration
+        // Benchmark implementation
         for i in 0..*num_layers {
             std::fs::remove_file(experiments_dir.join(format!("{}.json", 100 + i))).ok();
         }

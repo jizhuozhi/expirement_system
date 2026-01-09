@@ -6,217 +6,129 @@ import (
 	"sync"
 	"time"
 
-	"github.com/georgeji/experiment-system/control-plane/internal/state"
-	pb "github.com/georgeji/experiment-system/control-plane/proto"
 	"go.uber.org/zap"
 )
 
-// PushServer gRPC 推送服务器（Istio xDS 风格）
-type PushServer struct {
-	pb.UnimplementedConfigPushServiceServer
-	logger      *zap.Logger
-	state       *state.ConfigState // 内存状态
-	subscribers sync.Map            // map[string]*Subscriber
-	broadcast   chan *pb.ConfigChange
+// Configuration push server for data plane instances
+type XDSServer struct {
+	logger *zap.Logger
+
+	// Client connection management
+	mu      sync.RWMutex
+	clients map[string]*ClientState
+
+	// Configuration state
+	configMu    sync.RWMutex
+	layers      map[string]*Layer
+	experiments map[string]*Experiment
+
+	// Version tracking
+	versionCounter int64
 }
 
-// Subscriber 订阅者
-type Subscriber struct {
-	ID       string
-	Services []string
-	Version  string
-	Stream   pb.ConfigPushService_SubscribeConfigServer
-	Updates  chan *pb.ConfigChange
-	Done     chan struct{}
+// Layer configuration
+type Layer struct {
+	LayerId   string
+	Version   string
+	UpdatedAt time.Time
 }
 
-func NewPushServer(logger *zap.Logger, configState *state.ConfigState) *PushServer {
-	s := &PushServer{
-		logger:    logger,
-		state:     configState,
-		broadcast: make(chan *pb.ConfigChange, 100),
-	}
-
-	// 注册为 ConfigState 的变更监听器
-	configState.RegisterChangeHandler(s.handleStateChange)
-
-	go s.broadcastLoop()
-	return s
+// Experiment configuration
+type Experiment struct {
+	Eid       int64
+	Service   string
+	UpdatedAt time.Time
 }
 
-// handleStateChange 处理内存状态变更（由 ConfigState 回调）
-func (s *PushServer) handleStateChange(change *state.ConfigChange) {
-	s.logger.Debug("handling state change",
-		zap.Int("type", int(change.Type)),
-		zap.Int64("version", change.Version),
-	)
+// Connected client state
+type ClientState struct {
+	NodeID      string
+	ConnectedAt time.Time
+	LastSeen    time.Time
+}
 
-	var configChange *pb.ConfigChange
-
-	switch change.Type {
-	case state.LayerCreated, state.LayerUpdated:
-		configChange = &pb.ConfigChange{
-			Type:      pb.ConfigChange_LAYER_UPDATE,
-			Version:   fmt.Sprintf("v%d", change.Version),
-			Timestamp: change.Timestamp,
-			Layers:    []*pb.Layer{
-				// TODO: 转换模型
-			},
-		}
-	case state.LayerDeleted:
-		configChange = &pb.ConfigChange{
-			Type:            pb.ConfigChange_LAYER_DELETE,
-			Version:         fmt.Sprintf("v%d", change.Version),
-			Timestamp:       change.Timestamp,
-			DeletedLayerIds: []string{change.DeletedLayerID},
-		}
-	case state.ExperimentCreated, state.ExperimentUpdated:
-		configChange = &pb.ConfigChange{
-			Type:        pb.ConfigChange_EXPERIMENT_UPDATE,
-			Version:     fmt.Sprintf("v%d", change.Version),
-			Timestamp:   change.Timestamp,
-			Experiments: []*pb.Experiment{
-				// TODO: 转换模型
-			},
-		}
-	case state.ExperimentDeleted:
-		configChange = &pb.ConfigChange{
-			Type:                 pb.ConfigChange_EXPERIMENT_DELETE,
-			Version:              fmt.Sprintf("v%d", change.Version),
-			Timestamp:            change.Timestamp,
-			DeletedExperimentIds: []int32{change.DeletedEID},
-		}
-	}
-
-	if configChange != nil {
-		s.BroadcastChange(configChange)
+// Create new configuration push server
+func NewXDSServer(logger *zap.Logger) *XDSServer {
+	return &XDSServer{
+		logger:      logger,
+		clients:     make(map[string]*ClientState),
+		layers:      make(map[string]*Layer),
+		experiments: make(map[string]*Experiment),
 	}
 }
 
-// SubscribeConfig 订阅配置变更
-func (s *PushServer) SubscribeConfig(req *pb.SubscribeRequest, stream pb.ConfigPushService_SubscribeConfigServer) error {
-	s.logger.Info("new subscriber",
-		zap.String("data_plane_id", req.DataPlaneId),
-		zap.String("version", req.Version),
-		zap.Strings("services", req.Services),
-	)
+// Update layer configuration
+func (s *XDSServer) UpdateLayer(layer *Layer) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
 
-	sub := &Subscriber{
-		ID:       req.DataPlaneId,
-		Services: req.Services,
-		Version:  req.Version,
-		Stream:   stream,
-		Updates:  make(chan *pb.ConfigChange, 10),
-		Done:     make(chan struct{}),
-	}
+	layer.UpdatedAt = time.Now()
+	s.layers[layer.LayerId] = layer
 
-	s.subscribers.Store(req.DataPlaneId, sub)
-	defer func() {
-		s.subscribers.Delete(req.DataPlaneId)
-		close(sub.Done)
-		s.logger.Info("subscriber disconnected", zap.String("data_plane_id", req.DataPlaneId))
-	}()
-
-	// 发送当前完整配置
-	if err := s.sendFullConfig(stream, req); err != nil {
-		return fmt.Errorf("send full config: %w", err)
-	}
-
-	// 持续推送变更
-	for {
-		select {
-		case <-stream.Context().Done():
-			return stream.Context().Err()
-		case change := <-sub.Updates:
-			if err := stream.Send(change); err != nil {
-				s.logger.Error("send change failed",
-					zap.String("data_plane_id", req.DataPlaneId),
-					zap.Error(err),
-				)
-				return err
-			}
-			s.logger.Debug("change sent",
-				zap.String("data_plane_id", req.DataPlaneId),
-				zap.String("type", change.Type.String()),
-			)
-		}
-	}
+	s.logger.Info("Layer updated",
+		zap.String("layer_id", layer.LayerId),
+		zap.String("version", layer.Version))
 }
 
-// GetFullConfig 全量拉取配置（从内存读取）
-func (s *PushServer) GetFullConfig(ctx context.Context, req *pb.GetFullConfigRequest) (*pb.FullConfig, error) {
-	snapshot := s.state.GetFullSnapshot(req.Service)
+// Remove layer configuration
+func (s *XDSServer) DeleteLayer(layerID string) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
 
-	config := &pb.FullConfig{
-		Version:     fmt.Sprintf("v%d", snapshot.Version),
-		Timestamp:   snapshot.Timestamp,
-		Layers:      snapshot.Layers,
-		Experiments: snapshot.Experiments,
-	}
-	return config, nil
+	delete(s.layers, layerID)
+	s.logger.Info("Layer deleted", zap.String("layer_id", layerID))
 }
 
-// HealthCheck 健康检查
-func (s *PushServer) HealthCheck(ctx context.Context, req *pb.HealthCheckRequest) (*pb.HealthCheckResponse, error) {
-	return &pb.HealthCheckResponse{
-		Healthy:   true,
-		Version:   "1.0.0",
-		Timestamp: time.Now().Unix(),
-	}, nil
+// Update experiment configuration
+func (s *XDSServer) UpdateExperiment(exp *Experiment) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+
+	exp.UpdatedAt = time.Now()
+	key := fmt.Sprintf("%s-%d", exp.Service, exp.Eid)
+	s.experiments[key] = exp
+
+	s.logger.Info("Experiment updated",
+		zap.Int64("eid", exp.Eid),
+		zap.String("service", exp.Service))
 }
 
-// BroadcastChange 广播配置变更
-func (s *PushServer) BroadcastChange(change *pb.ConfigChange) {
-	select {
-	case s.broadcast <- change:
-	default:
-		s.logger.Warn("broadcast channel full, dropping change")
-	}
+// Remove experiment configuration
+func (s *XDSServer) DeleteExperiment(service string, eid int64) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+
+	key := fmt.Sprintf("%s-%d", service, eid)
+	delete(s.experiments, key)
+
+	s.logger.Info("Experiment deleted",
+		zap.Int64("eid", eid),
+		zap.String("service", service))
 }
 
-// broadcastLoop 广播循环
-func (s *PushServer) broadcastLoop() {
-	for change := range s.broadcast {
-		s.subscribers.Range(func(key, value interface{}) bool {
-			sub := value.(*Subscriber)
-			
-			// TODO: 根据 sub.Services 过滤变更
-			
-			select {
-			case sub.Updates <- change:
-			case <-sub.Done:
-			default:
-				s.logger.Warn("subscriber queue full",
-					zap.String("data_plane_id", sub.ID),
-				)
-			}
-			return true
-		})
-	}
+// Get connected client count
+func (s *XDSServer) GetClientCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.clients)
 }
 
-// sendFullConfig 发送完整配置（从内存读取）
-func (s *PushServer) sendFullConfig(stream pb.ConfigPushService_SubscribeConfigServer, req *pb.SubscribeRequest) error {
-	// 从内存获取全量快照
-	snapshot := s.state.GetFullSnapshot(req.Services[0]) // TODO: 支持多 service
-
-	fullConfig := &pb.ConfigChange{
-		Type:        pb.ConfigChange_FULL_RELOAD,
-		Version:     fmt.Sprintf("v%d", snapshot.Version),
-		Timestamp:   snapshot.Timestamp,
-		Layers:      snapshot.Layers,
-		Experiments: snapshot.Experiments,
-	}
-
-	return stream.Send(fullConfig)
+// Handle database change notifications
+func (s *XDSServer) HandleDBChange(changeType string, entityID string) {
+	s.logger.Info("DB change received",
+		zap.String("type", changeType),
+		zap.String("entity_id", entityID))
 }
 
-// GetSubscriberCount 获取订阅者数量
-func (s *PushServer) GetSubscriberCount() int {
-	count := 0
-	s.subscribers.Range(func(key, value interface{}) bool {
-		count++
-		return true
-	})
-	return count
+// Get subscriber count (alias for client count)
+func (s *XDSServer) GetSubscriberCount() int {
+	return s.GetClientCount()
+}
+
+// Type alias for backward compatibility
+type PushServer = XDSServer
+
+// Create new push server (alias)
+func NewPushServer(logger *zap.Logger) *PushServer {
+	return NewXDSServer(logger)
 }

@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package experiment.dataplane.v1;
+
+option go_package = "github.com/georgeji/experiment-system/proto/dataplane/v1;dataplanev1";
+
+// ExperimentService - data plane experiment assignment service
+service ExperimentService {
+  // Get experiment assignment for single request
+  rpc GetExperiment(ExperimentRequest) returns (ExperimentResponse);
+  
+  // Get experiment assignments for batch requests
+  rpc GetExperimentBatch(stream ExperimentRequest) returns (stream ExperimentResponse);
+}
+
+// Experiment request (matches existing Rust struct)
+message ExperimentRequest {
+  // Services to query (e.g., ["payment", "recommendation"])
+  repeated string services = 1;
+  
+  // Context for rule evaluation and hashing (JSON-encoded values)
+  map<string, string> context = 2;
+  
+  // Optional: filter specific layers (empty = all layers)
+  repeated string layers = 3;
+}
+
+// Experiment response (matches existing Rust struct)
+message ExperimentResponse {
+  // Map of service_name -> ServiceResult
+  map<string, ServiceResult> results = 1;
+}
+
+// Per-service result (matches existing Rust struct)
+message ServiceResult {
+  // Merged parameters (JSON string for flexibility)
+  string parameters = 1;
+  
+  // Matched variant IDs
+  repeated int64 vids = 2;
+  
+  // Matched layer IDs (for debugging)
+  repeated string matched_layers = 3;
+}

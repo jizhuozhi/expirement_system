@@ -1,24 +1,17 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/georgeji/experiment-system/control-plane/internal/config"
 	"github.com/georgeji/experiment-system/control-plane/internal/grpc_server"
-	"github.com/georgeji/experiment-system/control-plane/internal/notifier"
-	pb "github.com/georgeji/experiment-system/control-plane/proto"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 )
 
 var (
@@ -28,66 +21,28 @@ var (
 func main() {
 	flag.Parse()
 
+	// 初始化日志
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+
+	logger.Info("starting experiment control plane server")
+
 	// 加载配置
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		panic(fmt.Errorf("load config: %w", err))
+		logger.Fatal("failed to load config", zap.Error(err))
 	}
 
-	// 初始化日志
-	logger, err := initLogger(cfg.Log.Level)
-	if err != nil {
-		panic(fmt.Errorf("init logger: %w", err))
-	}
-	defer logger.Sync()
-
-	logger.Info("starting control plane",
-		zap.String("http_addr", fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)),
-		zap.String("grpc_addr", fmt.Sprintf("%s:%d", cfg.GRPC.Host, cfg.GRPC.Port)),
+	logger.Info("config loaded",
+		zap.String("server_addr", fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)),
 	)
 
-	// 连接数据库
-	dbpool, err := pgxpool.New(context.Background(), cfg.Database.DSN())
-	if err != nil {
-		logger.Fatal("connect to database failed", zap.Error(err))
-	}
-	defer dbpool.Close()
+	// Configuration and utility functions
+	xdsServer := grpc_server.NewXDSServer(logger)
 
-	logger.Info("database connected")
-
-	// 启动 gRPC Server
-	pushServer := grpc_server.NewPushServer(logger)
-	grpcServer := grpc.NewServer()
-	pb.RegisterConfigPushServiceServer(grpcServer, pushServer)
-
-	grpcListener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.GRPC.Host, cfg.GRPC.Port))
-	if err != nil {
-		logger.Fatal("grpc listen failed", zap.Error(err))
-	}
-
-	go func() {
-		logger.Info("grpc server listening", zap.String("addr", grpcListener.Addr().String()))
-		if err := grpcServer.Serve(grpcListener); err != nil {
-			logger.Fatal("grpc serve failed", zap.Error(err))
-		}
-	}()
-
-	// 启动 PostgreSQL LISTEN/NOTIFY
-	pgNotifier := notifier.NewPgNotifier(dbpool, logger)
-	pgNotifier.RegisterHandler(pushServer.HandleDBChange)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() {
-		if err := pgNotifier.Start(ctx); err != nil && err != context.Canceled {
-			logger.Error("pg notifier failed", zap.Error(err))
-		}
-	}()
-
-	// 启动 HTTP Server
+	// Configuration and utility functions
 	router := gin.Default()
-	setupRoutes(router, cfg, logger, pushServer)
+	setupRoutes(router, cfg, logger, xdsServer)
 
 	httpServer := &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
@@ -95,9 +50,9 @@ func main() {
 	}
 
 	go func() {
-		logger.Info("http server listening", zap.String("addr", httpServer.Addr))
+		logger.Info("HTTP server listening", zap.String("addr", httpServer.Addr))
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("http serve failed", zap.Error(err))
+			logger.Fatal("HTTP server failed", zap.Error(err))
 		}
 	}()
 
@@ -107,131 +62,67 @@ func main() {
 	<-quit
 
 	logger.Info("shutting down servers...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := httpServer.Shutdown(ctx); err != nil {
-		logger.Error("http server shutdown error", zap.Error(err))
-	}
-
-	grpcServer.GracefulStop()
 	logger.Info("servers stopped")
 }
 
-func setupRoutes(r *gin.Engine, cfg *config.Config, logger *zap.Logger, pushServer *grpc_server.PushServer) {
-	// Health check
+func setupRoutes(r *gin.Engine, cfg *config.Config, logger *zap.Logger, xdsServer *grpc_server.XDSServer) {
+	// Configuration and utility functions
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"status":      "ok",
-			"subscribers": pushServer.GetSubscriberCount(),
+			"status":  "ok",
+			"message": "Experiment Control Plane",
+			"clients": xdsServer.GetClientCount(),
 		})
 	})
 
-	// API v1
-	v1 := r.Group("/api/v1")
+	// Configuration and utility functions
+	r.GET("/status", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"version": "v1.0",
+			"status":  "running",
+			"clients": xdsServer.GetClientCount(),
+		})
+	})
+
+	// 配置管理接口
+	api := r.Group("/api/v1")
 	{
-		// Auth
-		auth := v1.Group("/auth")
-		{
-			auth.POST("/login", func(c *gin.Context) {
-				// TODO: 实现登录
-				c.JSON(200, gin.H{"message": "login endpoint"})
-			})
-			auth.POST("/register", func(c *gin.Context) {
-				// TODO: 实现注册
-				c.JSON(200, gin.H{"message": "register endpoint"})
-			})
-		}
+		// Configuration and utility functions
+		api.POST("/layers", func(c *gin.Context) {
+			var layer grpc_server.Layer
+			if err := c.ShouldBindJSON(&layer); err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
 
-		// OIDC
-		oidc := r.Group("/.well-known")
-		{
-			oidc.GET("/openid-configuration", func(c *gin.Context) {
-				c.JSON(200, gin.H{
-					"issuer":                 cfg.OIDC.Issuer,
-					"authorization_endpoint": cfg.OIDC.Issuer + "/oauth/authorize",
-					"token_endpoint":         cfg.OIDC.Issuer + "/oauth/token",
-					"userinfo_endpoint":      cfg.OIDC.Issuer + "/oauth/userinfo",
-					"jwks_uri":               cfg.OIDC.Issuer + "/.well-known/jwks.json",
-					"response_types_supported": []string{"code", "token"},
-					"grant_types_supported":    []string{"authorization_code", "refresh_token"},
-					"subject_types_supported":  []string{"public"},
-					"id_token_signing_alg_values_supported": []string{"HS256"},
-				})
-			})
-		}
+			xdsServer.UpdateLayer(&layer)
+			c.JSON(200, gin.H{"message": "Layer updated"})
+		})
 
-		// Layers
-		layers := v1.Group("/layers")
-		{
-			layers.GET("", func(c *gin.Context) {
-				// TODO: 列出 Layers
-				c.JSON(200, gin.H{"message": "list layers"})
-			})
-			layers.POST("", func(c *gin.Context) {
-				// TODO: 创建 Layer
-				c.JSON(201, gin.H{"message": "create layer"})
-			})
-			layers.PUT("/:id", func(c *gin.Context) {
-				// TODO: 更新 Layer
-				c.JSON(200, gin.H{"message": "update layer"})
-			})
-			layers.DELETE("/:id", func(c *gin.Context) {
-				// TODO: 删除 Layer
-				c.JSON(204, nil)
-			})
-		}
+		api.DELETE("/layers/:id", func(c *gin.Context) {
+			layerID := c.Param("id")
+			xdsServer.DeleteLayer(layerID)
+			c.JSON(200, gin.H{"message": "Layer deleted"})
+		})
 
-		// Experiments
-		experiments := v1.Group("/experiments")
-		{
-			experiments.GET("", func(c *gin.Context) {
-				// TODO: 列出 Experiments
-				c.JSON(200, gin.H{"message": "list experiments"})
-			})
-			experiments.POST("", func(c *gin.Context) {
-				// TODO: 创建 Experiment
-				c.JSON(201, gin.H{"message": "create experiment"})
-			})
-			experiments.PUT("/:id", func(c *gin.Context) {
-				// TODO: 更新 Experiment
-				c.JSON(200, gin.H{"message": "update experiment"})
-			})
-			experiments.DELETE("/:id", func(c *gin.Context) {
-				// TODO: 删除 Experiment
-				c.JSON(204, nil)
-			})
-		}
+		// Configuration and utility functions
+		api.POST("/experiments", func(c *gin.Context) {
+			var exp grpc_server.Experiment
+			if err := c.ShouldBindJSON(&exp); err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
 
-		// Data Planes
-		dataPlanes := v1.Group("/data-planes")
-		{
-			dataPlanes.GET("", func(c *gin.Context) {
-				// TODO: 列出数据面实例
-				c.JSON(200, gin.H{"message": "list data planes"})
-			})
-		}
-	}
-}
+			xdsServer.UpdateExperiment(&exp)
+			c.JSON(200, gin.H{"message": "Experiment updated"})
+		})
 
-func initLogger(level string) (*zap.Logger, error) {
-	config := zap.NewProductionConfig()
-	config.Level = zap.NewAtomicLevelAt(parseLogLevel(level))
-	return config.Build()
-}
+		api.DELETE("/experiments/:service/:eid", func(c *gin.Context) {
+			service := c.Param("service")
+			eid := c.GetInt64("eid")
 
-func parseLogLevel(level string) zap.AtomicLevel {
-	switch level {
-	case "debug":
-		return zap.NewAtomicLevelAt(zap.DebugLevel)
-	case "info":
-		return zap.NewAtomicLevelAt(zap.InfoLevel)
-	case "warn":
-		return zap.NewAtomicLevelAt(zap.WarnLevel)
-	case "error":
-		return zap.NewAtomicLevelAt(zap.ErrorLevel)
-	default:
-		return zap.NewAtomicLevelAt(zap.InfoLevel)
+			xdsServer.DeleteExperiment(service, eid)
+			c.JSON(200, gin.H{"message": "Experiment deleted"})
+		})
 	}
 }

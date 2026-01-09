@@ -4,7 +4,7 @@ use rand::Rng;
 use serde_json::json;
 use std::collections::HashMap;
 
-/// Create nested rule tree with specified depth
+/// Benchmark implementation
 fn create_nested_rule(depth: usize, seed: usize) -> Node {
     if depth == 0 {
         return Node::Field {
@@ -33,7 +33,7 @@ fn create_nested_rule(depth: usize, seed: usize) -> Node {
     }
 }
 
-/// Create random context for rule evaluation
+/// Benchmark implementation
 fn create_random_context(num_fields: usize) -> HashMap<String, serde_json::Value> {
     let mut rng = rand::thread_rng();
     let mut context = HashMap::new();
@@ -50,7 +50,7 @@ fn create_random_context(num_fields: usize) -> HashMap<String, serde_json::Value
     context
 }
 
-/// Benchmark: Simple rule evaluation
+/// Benchmark implementation
 fn bench_simple_rules(c: &mut Criterion) {
     let mut group = c.benchmark_group("simple_rules");
 
@@ -97,7 +97,8 @@ fn bench_simple_rules(c: &mut Criterion) {
     for (name, rule) in rules.iter() {
         group.bench_with_input(BenchmarkId::from_parameter(name), name, |b, _| {
             b.iter(|| {
-                rule.evaluate(black_box(&context), black_box(&field_types)).unwrap()
+                rule.evaluate(black_box(&context), black_box(&field_types))
+                    .unwrap()
             });
         });
     }
@@ -105,7 +106,7 @@ fn bench_simple_rules(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark: Rule depth complexity
+/// Benchmark implementation
 fn bench_rule_depth(c: &mut Criterion) {
     let mut group = c.benchmark_group("rule_depth");
     group.sample_size(50);
@@ -120,22 +121,18 @@ fn bench_rule_depth(c: &mut Criterion) {
     for depth in [2, 4, 6, 8, 10, 15, 20].iter() {
         let rule = create_nested_rule(*depth, 42);
 
-        group.bench_with_input(
-            BenchmarkId::from_parameter(depth),
-            depth,
-            |b, _| {
-                b.iter(|| {
-                    rule.evaluate(black_box(&context), black_box(&field_types))
-                        .unwrap()
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(depth), depth, |b, _| {
+            b.iter(|| {
+                rule.evaluate(black_box(&context), black_box(&field_types))
+                    .unwrap()
+            });
+        });
     }
 
     group.finish();
 }
 
-/// Benchmark: Rule width (number of conditions at same level)
+/// Benchmark implementation
 fn bench_rule_width(c: &mut Criterion) {
     let mut group = c.benchmark_group("rule_width");
 
@@ -157,22 +154,18 @@ fn bench_rule_width(c: &mut Criterion) {
 
         let rule = Node::And { children };
 
-        group.bench_with_input(
-            BenchmarkId::from_parameter(width),
-            width,
-            |b, _| {
-                b.iter(|| {
-                    rule.evaluate(black_box(&context), black_box(&field_types))
-                        .unwrap()
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(width), width, |b, _| {
+            b.iter(|| {
+                rule.evaluate(black_box(&context), black_box(&field_types))
+                    .unwrap()
+            });
+        });
     }
 
     group.finish();
 }
 
-/// Benchmark: Complex rule patterns
+/// Benchmark implementation
 fn bench_complex_patterns(c: &mut Criterion) {
     let mut group = c.benchmark_group("complex_patterns");
 
@@ -191,7 +184,7 @@ fn bench_complex_patterns(c: &mut Criterion) {
     .into_iter()
     .collect();
 
-    // Pattern 1: Nested AND/OR
+    // Benchmark implementation
     let pattern1 = Node::And {
         children: vec![
             Node::Or {
@@ -216,7 +209,7 @@ fn bench_complex_patterns(c: &mut Criterion) {
         ],
     };
 
-    // Pattern 2: Complex nested
+    // Benchmark implementation
     let pattern2 = Node::And {
         children: vec![
             Node::Or {
@@ -255,7 +248,8 @@ fn bench_complex_patterns(c: &mut Criterion) {
     for (name, rule) in patterns.iter() {
         group.bench_with_input(BenchmarkId::from_parameter(name), name, |b, _| {
             b.iter(|| {
-                rule.evaluate(black_box(&context), black_box(&field_types)).unwrap()
+                rule.evaluate(black_box(&context), black_box(&field_types))
+                    .unwrap()
             });
         });
     }
@@ -263,7 +257,7 @@ fn bench_complex_patterns(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark: Batch rule evaluation (multiple rules)
+/// Benchmark implementation
 fn bench_batch_evaluation(c: &mut Criterion) {
     let mut group = c.benchmark_group("batch_evaluation");
     group.sample_size(50);
@@ -276,22 +270,16 @@ fn bench_batch_evaluation(c: &mut Criterion) {
     let context = create_random_context(20);
 
     for num_rules in [10, 50, 100, 500, 1_000, 5_000].iter() {
-        let rules: Vec<Node> = (0..*num_rules)
-            .map(|i| create_nested_rule(3, i))
-            .collect();
+        let rules: Vec<Node> = (0..*num_rules).map(|i| create_nested_rule(3, i)).collect();
 
-        group.bench_with_input(
-            BenchmarkId::from_parameter(num_rules),
-            num_rules,
-            |b, _| {
-                b.iter(|| {
-                    for rule in &rules {
-                        rule.evaluate(black_box(&context), black_box(&field_types))
-                            .ok();
-                    }
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(num_rules), num_rules, |b, _| {
+            b.iter(|| {
+                for rule in &rules {
+                    rule.evaluate(black_box(&context), black_box(&field_types))
+                        .ok();
+                }
+            });
+        });
     }
 
     group.finish();

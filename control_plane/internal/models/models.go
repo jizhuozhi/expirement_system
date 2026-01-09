@@ -6,55 +6,55 @@ import (
 	"time"
 )
 
-// User 用户模型
+// User account information
 type User struct {
 	ID           string    `db:"id" json:"id"`
 	Email        string    `db:"email" json:"email"`
 	PasswordHash string    `db:"password_hash" json:"-"`
 	Name         string    `db:"name" json:"name"`
-	Role         string    `db:"role" json:"role"` // admin, developer, viewer
+	Role         string    `db:"role" json:"role"` // admin, user, viewer
 	CreatedAt    time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt    time.Time `db:"updated_at" json:"updated_at"`
 }
 
-// Layer 实验层
+// Experiment layer configuration
 type Layer struct {
-	LayerID   string         `db:"layer_id" json:"layer_id"`
-	Version   string         `db:"version" json:"version"`
-	Priority  int32          `db:"priority" json:"priority"`
-	HashKey   string         `db:"hash_key" json:"hash_key"`
-	Salt      string         `db:"salt" json:"salt"`
-	Enabled   bool           `db:"enabled" json:"enabled"`
+	LayerID   string           `db:"layer_id" json:"layer_id"`
+	Version   string           `db:"version" json:"version"`
+	Priority  int32            `db:"priority" json:"priority"`
+	HashKey   string           `db:"hash_key" json:"hash_key"`
+	Salt      string           `db:"salt" json:"salt"`
+	Enabled   bool             `db:"enabled" json:"enabled"`
 	Ranges    JSONBucketRanges `db:"ranges" json:"ranges"`
 	Services  JSONStringArray  `db:"services" json:"services"`
-	Metadata  JSONMap        `db:"metadata" json:"metadata"`
-	CreatedBy string         `db:"created_by" json:"created_by"`
-	CreatedAt time.Time      `db:"created_at" json:"created_at"`
-	UpdatedAt time.Time      `db:"updated_at" json:"updated_at"`
+	Metadata  JSONMap          `db:"metadata" json:"metadata"`
+	CreatedBy string           `db:"created_by" json:"created_by"`
+	CreatedAt time.Time        `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time        `db:"updated_at" json:"updated_at"`
 }
 
-// BucketRange 桶范围
+// Bucket range for experiment allocation
 type BucketRange struct {
 	Start uint32 `json:"start"`
 	End   uint32 `json:"end"`
 	VID   int32  `json:"vid"`
 }
 
-// Experiment 实验
+// Experiment definition with rules and variants
 type Experiment struct {
-	EID       int32           `db:"eid" json:"eid"`
-	Service   string          `db:"service" json:"service"`
-	Name      string          `db:"name" json:"name"`
-	Rule      JSONRuleNode    `db:"rule" json:"rule"`
-	Variants  JSONVariants    `db:"variants" json:"variants"`
-	Metadata  JSONMap         `db:"metadata" json:"metadata"`
-	Status    string          `db:"status" json:"status"` // draft, active, paused, archived
-	CreatedBy string          `db:"created_by" json:"created_by"`
-	CreatedAt time.Time       `db:"created_at" json:"created_at"`
-	UpdatedAt time.Time       `db:"updated_at" json:"updated_at"`
+	EID       int32        `db:"eid" json:"eid"`
+	Service   string       `db:"service" json:"service"`
+	Name      string       `db:"name" json:"name"`
+	Rule      JSONRuleNode `db:"rule" json:"rule"`
+	Variants  JSONVariants `db:"variants" json:"variants"`
+	Metadata  JSONMap      `db:"metadata" json:"metadata"`
+	Status    string       `db:"status" json:"status"` // active, paused, stopped
+	CreatedBy string       `db:"created_by" json:"created_by"`
+	CreatedAt time.Time    `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time    `db:"updated_at" json:"updated_at"`
 }
 
-// RuleNode 规则节点
+// Rule evaluation node
 type RuleNode struct {
 	Type     string     `json:"type"`
 	Field    string     `json:"field,omitempty"`
@@ -63,13 +63,13 @@ type RuleNode struct {
 	Children []RuleNode `json:"children,omitempty"`
 }
 
-// Variant 变体
+// Experiment variant with parameters
 type Variant struct {
 	VID    int32                  `json:"vid"`
 	Params map[string]interface{} `json:"params"`
 }
 
-// ConfigVersion 配置版本
+// Configuration version tracking
 type ConfigVersion struct {
 	Version   string    `db:"version" json:"version"`
 	Timestamp int64     `db:"timestamp" json:"timestamp"`
@@ -78,7 +78,7 @@ type ConfigVersion struct {
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 }
 
-// DataPlaneInstance 数据面实例
+// Data plane instance registration
 type DataPlaneInstance struct {
 	ID             string    `db:"id" json:"id"`
 	Hostname       string    `db:"hostname" json:"hostname"`
@@ -86,13 +86,13 @@ type DataPlaneInstance struct {
 	Version        string    `db:"version" json:"version"`
 	CurrentVersion string    `db:"current_version" json:"current_version"` // 配置版本
 	LastHeartbeat  time.Time `db:"last_heartbeat" json:"last_heartbeat"`
-	Status         string    `db:"status" json:"status"` // online, offline
+	Status         string    `db:"status" json:"status"` // online, offline, error
 	Metadata       JSONMap   `db:"metadata" json:"metadata"`
 	CreatedAt      time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt      time.Time `db:"updated_at" json:"updated_at"`
 }
 
-// JSONB 类型辅助
+// JSON serialization helpers
 
 type JSONBucketRanges []BucketRange
 

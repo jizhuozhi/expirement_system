@@ -11,7 +11,7 @@ fn test_salt_isolation() {
     let bucket1 = hash_to_bucket(key, salt1);
     let bucket2 = hash_to_bucket(key, salt2);
 
-    // Different salts should produce different buckets (most of the time)
+    // Test implementation
     assert_ne!(bucket1, bucket2);
     assert!(bucket1 < BUCKET_SIZE);
     assert!(bucket2 < BUCKET_SIZE);
@@ -19,7 +19,7 @@ fn test_salt_isolation() {
 
 #[test]
 fn test_layer_get_salt() {
-    // Test explicit salt
+    // Test implementation
     let layer1 = Layer {
         layer_id: "test".to_string(),
         version: "v1".to_string(),
@@ -32,7 +32,7 @@ fn test_layer_get_salt() {
     };
     assert_eq!(layer1.get_salt(), "custom_salt");
 
-    // Test default salt (layer_id_version)
+    // Test implementation
     let layer2 = Layer {
         layer_id: "test2".to_string(),
         version: "v2".to_string(),
@@ -73,7 +73,7 @@ fn test_ranges_deterministic_hit() {
     let key = "consistent_user";
     let bucket = hash_to_bucket(key, &layer.get_salt());
 
-    // Multiple calls should return same vid
+    // Test implementation
     let vid1 = layer.get_vid(bucket);
     let vid2 = layer.get_vid(bucket);
     assert_eq!(vid1, vid2);

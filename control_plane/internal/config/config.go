@@ -12,15 +12,9 @@ type Config struct {
 	OIDC     OIDCConfig     `mapstructure:"oidc"`
 	GRPC     GRPCConfig     `mapstructure:"grpc"`
 	Log      LogConfig      `mapstructure:"log"`
-	Gossip   GossipConfig   `mapstructure:"gossip"`
 }
 
-type GossipConfig struct {
-	NodeID   string   `mapstructure:"node_id"`
-	BindAddr string   `mapstructure:"bind_addr"`
-	BindPort int      `mapstructure:"bind_port"`
-	Peers    []string `mapstructure:"peers"`
-}
+
 
 type ServerConfig struct {
 	Host string `mapstructure:"host"`
@@ -37,10 +31,10 @@ type DatabaseConfig struct {
 }
 
 type OIDCConfig struct {
-	Issuer       string `mapstructure:"issuer"`
-	JWTSecret    string `mapstructure:"jwt_secret"`
-	AccessTTL    int    `mapstructure:"access_ttl"`    // 秒
-	RefreshTTL   int    `mapstructure:"refresh_ttl"`   // 秒
+	Issuer     string `mapstructure:"issuer"`
+	JWTSecret  string `mapstructure:"jwt_secret"`
+	AccessTTL  int    `mapstructure:"access_ttl"`  // 秒
+	RefreshTTL int    `mapstructure:"refresh_ttl"` // 秒
 }
 
 type GRPCConfig struct {
@@ -65,8 +59,6 @@ func Load(configPath string) (*Config, error) {
 	viper.SetDefault("grpc.host", "0.0.0.0")
 	viper.SetDefault("grpc.port", 9091)
 	viper.SetDefault("log.level", "info")
-	viper.SetDefault("gossip.bind_addr", "0.0.0.0")
-	viper.SetDefault("gossip.bind_port", 7946)
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("read config: %w", err)

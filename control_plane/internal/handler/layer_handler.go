@@ -9,13 +9,13 @@ import (
 	"go.uber.org/zap"
 )
 
-// LayerHandler Layer API Handler
+// HTTP handler implementation
 type LayerHandler struct {
 	state  *state.ConfigState
 	logger *zap.Logger
 }
 
-// NewLayerHandler 创建 Handler
+// HTTP handler implementation
 func NewLayerHandler(state *state.ConfigState, logger *zap.Logger) *LayerHandler {
 	return &LayerHandler{
 		state:  state,
@@ -23,8 +23,8 @@ func NewLayerHandler(state *state.ConfigState, logger *zap.Logger) *LayerHandler
 	}
 }
 
-// CreateLayer 创建 Layer
-// POST /api/layers
+// HTTP handler implementation
+// HTTP handler implementation
 func (h *LayerHandler) CreateLayer(c *gin.Context) {
 	var req models.Layer
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -42,8 +42,8 @@ func (h *LayerHandler) CreateLayer(c *gin.Context) {
 	c.JSON(http.StatusCreated, req)
 }
 
-// UpdateLayer 更新 Layer
-// PUT /api/layers/:layer_id
+// HTTP handler implementation
+// HTTP handler implementation
 func (h *LayerHandler) UpdateLayer(c *gin.Context) {
 	layerID := c.Param("layer_id")
 
@@ -64,8 +64,8 @@ func (h *LayerHandler) UpdateLayer(c *gin.Context) {
 	c.JSON(http.StatusOK, req)
 }
 
-// DeleteLayer 删除 Layer
-// DELETE /api/layers/:layer_id
+// HTTP handler implementation
+// HTTP handler implementation
 func (h *LayerHandler) DeleteLayer(c *gin.Context) {
 	layerID := c.Param("layer_id")
 
@@ -78,8 +78,8 @@ func (h *LayerHandler) DeleteLayer(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
 
-// GetLayer 获取 Layer
-// GET /api/layers/:layer_id
+// HTTP handler implementation
+// HTTP handler implementation
 func (h *LayerHandler) GetLayer(c *gin.Context) {
 	layerID := c.Param("layer_id")
 
@@ -93,8 +93,8 @@ func (h *LayerHandler) GetLayer(c *gin.Context) {
 	c.JSON(http.StatusOK, layer)
 }
 
-// ListLayers 列出 Layers
-// GET /api/layers?service=xxx
+// HTTP handler implementation
+// HTTP handler implementation
 func (h *LayerHandler) ListLayers(c *gin.Context) {
 	service := c.Query("service")
 
@@ -107,7 +107,7 @@ func (h *LayerHandler) ListLayers(c *gin.Context) {
 	})
 }
 
-// RegisterRoutes 注册路由
+// HTTP handler implementation
 func (h *LayerHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/layers", h.CreateLayer)
 	r.GET("/layers", h.ListLayers)

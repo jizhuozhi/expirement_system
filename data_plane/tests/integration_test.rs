@@ -15,7 +15,7 @@ async fn test_layer_loading_and_service_index() {
     std::fs::create_dir_all(&layers_dir).unwrap();
     std::fs::create_dir_all(&experiments_dir).unwrap();
 
-    // Create experiment
+    // Test implementation
     let exp = ExperimentDef {
         eid: 100,
         service: "test_service".to_string(),
@@ -40,7 +40,7 @@ async fn test_layer_loading_and_service_index() {
     let catalog = ExperimentCatalog::load_from_dir(experiments_dir).unwrap();
     assert_eq!(catalog.len(), 1);
 
-    // Create layers
+    // Test implementation
     let layer = Layer {
         layer_id: "test_layer".to_string(),
         version: "v1".to_string(),
@@ -72,7 +72,7 @@ async fn test_layer_loading_and_service_index() {
     let manager = LayerManager::new(layers_dir);
     manager.load_all_layers(&catalog).await.unwrap();
 
-    // Verify service index was built (inferred from catalog)
+    // Test implementation
     let layers = manager.get_layers_for_service("test_service");
     assert_eq!(layers.len(), 1);
     assert_eq!(layers[0].layer_id, "test_layer");
@@ -86,7 +86,7 @@ async fn test_merge_with_ranges() {
     std::fs::create_dir_all(&layers_dir).unwrap();
     std::fs::create_dir_all(&experiments_dir).unwrap();
 
-    // Create experiment
+    // Test implementation
     let exp = ExperimentDef {
         eid: 200,
         service: "api".to_string(),
@@ -110,7 +110,7 @@ async fn test_merge_with_ranges() {
 
     let catalog = Arc::new(ExperimentCatalog::load_from_dir(experiments_dir).unwrap());
 
-    // Create layers with explicit slot ranges
+    // Test implementation
     let test_user = "user_123";
     let salt = "test_salt";
     let bucket = hash_to_bucket(test_user, salt);
@@ -164,7 +164,7 @@ async fn test_eid_rule_evaluation_memo() {
     std::fs::create_dir_all(&layers_dir).unwrap();
     std::fs::create_dir_all(&experiments_dir).unwrap();
 
-    // Create experiment with shared rule
+    // Test implementation
     let exp = ExperimentDef {
         eid: 300,
         service: "api".to_string(),
@@ -198,7 +198,7 @@ async fn test_eid_rule_evaluation_memo() {
     let bucket1 = hash_to_bucket(test_user, salt1);
     let bucket2 = hash_to_bucket(test_user, salt2);
 
-    // Two layers hitting the same eid (rule should only evaluate once)
+    // Test implementation
     let layer1 = Layer {
         layer_id: "layer1".to_string(),
         version: "v1".to_string(),
@@ -243,7 +243,7 @@ async fn test_eid_rule_evaluation_memo() {
     let manager = LayerManager::new(layers_dir);
     manager.load_all_layers(&catalog).await.unwrap();
 
-    // Request with region = US (rule should pass)
+    // Test implementation
     let mut context = HashMap::new();
     context.insert("user_id".to_string(), json!(test_user));
     context.insert("region".to_string(), json!("US"));
@@ -255,12 +255,15 @@ async fn test_eid_rule_evaluation_memo() {
     };
 
     let mut field_types = HashMap::new();
-    field_types.insert("region".to_string(), experiment_data_plane::rule::FieldType::String);
+    field_types.insert(
+        "region".to_string(),
+        experiment_data_plane::rule::FieldType::String,
+    );
 
     let response = merge_layers_batch(&request, &manager, &catalog, &field_types).unwrap();
 
     let result = response.results.get("api").unwrap();
-    // Both variants should be matched (rule evaluated once and cached for eid 300)
+    // Test implementation
     assert_eq!(result.vids.len(), 2);
     assert!(result.vids.contains(&3001));
     assert!(result.vids.contains(&3002));

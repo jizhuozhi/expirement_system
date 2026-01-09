@@ -1,10 +1,13 @@
-pub mod catalog;
 pub mod config;
-pub mod error;
-pub mod hash;
-pub mod layer;
-pub mod merge;
-pub mod metrics;
-pub mod rule;
+pub mod engine;
 pub mod server;
-pub mod watcher;
+pub mod utils;
+
+#[cfg(feature = "grpc")]
+pub mod xds_client;
+
+// Re-export commonly used items
+pub use config::*;
+pub use engine::*;
+pub use server::*;
+pub use utils::*;

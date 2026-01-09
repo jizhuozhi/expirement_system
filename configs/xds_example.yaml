@@ -1,0 +1,280 @@
+# xDS 配置示例
+# 演示如何配置实验系统使用 Envoy 风格的 xDS 协议
+
+# 控制面配置
+control_plane:
+  # HTTP 管理接口
+  http:
+    host: "0.0.0.0"
+    port: 8080
+  
+  # gRPC xDS 服务
+  grpc:
+    host: "0.0.0.0"
+    port: 8081
+  
+  # 数据库配置（可选）
+  database:
+    enabled: false
+    # url: "postgres://user:pass@localhost/experiment_control"
+
+# 数据面配置
+data_plane:
+  # HTTP 服务接口
+  http:
+    host: "0.0.0.0"
+    port: 8080
+  
+  # gRPC 实验查询服务
+  grpc:
+    host: "0.0.0.0"
+    port: 50051
+  
+  # xDS 客户端配置
+  xds:
+    # 控制面地址
+    control_plane_addr: "http://localhost:8081"
+    
+    # 节点信息（Envoy 风格）
+    node:
+      id: "experiment-dataplane-001"
+      cluster: "production"
+      locality:
+        region: "us-west"
+        zone: "us-west-1a"
+      metadata:
+        environment: "production"
+        datacenter: "dc1"
+        version: "1.0.0"
+    
+    # 订阅的服务列表
+    services:
+      - "payment"
+      - "recommendation"
+      - "search"
+      - "user-profile"
+    
+    # xDS 功能特性
+    features:
+      - "delta_xds"          # 启用增量 xDS
+      - "load_reporting"     # 启用负载报告
+      - "health_check"       # 启用健康检查
+
+# 示例 Layer 配置
+example_layers:
+  - layer_id: "payment-layer"
+    version: "v1.0"
+    priority: 100
+    hash_key: "user_id"
+    salt: "payment-salt-2024"
+    enabled: true
+    services: ["payment"]
+    ranges:
+      - start: 0
+        end: 5000
+        vid: 1001  # 对照组
+      - start: 5000
+        end: 10000
+        vid: 1002  # 实验组
+    labels:
+      team: "payment"
+      environment: "production"
+    description: "支付服务 A/B 测试"
+
+  - layer_id: "recommendation-layer"
+    version: "v2.1"
+    priority: 90
+    hash_key: "user_id"
+    enabled: true
+    services: ["recommendation"]
+    ranges:
+      - start: 0
+        end: 3000
+        vid: 2001  # 算法 A
+      - start: 3000
+        end: 7000
+        vid: 2002  # 算法 B
+      - start: 7000
+        end: 10000
+        vid: 2003  # 算法 C
+    labels:
+      team: "recommendation"
+      experiment_type: "multivariate"
+
+# 示例 Experiment 配置
+example_experiments:
+  - eid: 1001
+    service: "payment"
+    status: "RUNNING"
+    type: "AB_TEST"
+    rule: |
+      {
+        "and": [
+          {"field": "country", "op": "eq", "value": "US"},
+          {"field": "user_type", "op": "in", "value": ["premium", "enterprise"]}
+        ]
+      }
+    variants:
+      - vid: 1001
+        name: "control"
+        is_control: true
+        params: |
+          {
+            "payment_method": "standard",
+            "ui_theme": "classic"
+          }
+      - vid: 1002
+        name: "new_ui"
+        is_control: false
+        params: |
+          {
+            "payment_method": "one_click",
+            "ui_theme": "modern",
+            "enable_animations": true
+          }
+    labels:
+      owner: "payment-team"
+      priority: "high"
+    description: "新支付界面 A/B 测试"
+
+  - eid: 2001
+    service: "recommendation"
+    status: "RUNNING"
+    type: "MULTIVARIATE"
+    variants:
+      - vid: 2001
+        name: "collaborative_filtering"
+        params: |
+          {
+            "algorithm": "collaborative_filtering",
+            "num_recommendations": 10,
+            "diversity_factor": 0.3
+          }
+      - vid: 2002
+        name: "content_based"
+        params: |
+          {
+            "algorithm": "content_based",
+            "num_recommendations": 12,
+            "similarity_threshold": 0.7
+          }
+      - vid: 2003
+        name: "hybrid"
+        params: |
+          {
+            "algorithm": "hybrid",
+            "num_recommendations": 15,
+            "cf_weight": 0.6,
+            "cb_weight": 0.4
+          }
+
+# 环境变量配置示例
+environment_variables:
+  # 控制面
+  CONTROL_PLANE_HOST: "0.0.0.0"
+  CONTROL_PLANE_PORT: "8080"
+  CONTROL_PLANE_GRPC_PORT: "8081"
+  
+  # 数据面
+  SERVER_HOST: "0.0.0.0"
+  SERVER_PORT: "8080"
+  GRPC_PORT: "50051"
+  
+  # xDS 配置
+  XDS_CONTROL_PLANE_ADDR: "http://localhost:8081"
+  XDS_NODE_ID: "experiment-dataplane-001"
+  XDS_CLUSTER: "production"
+  XDS_SERVICES: "payment,recommendation,search,user-profile"
+  USE_XDS: "true"
+  
+  # 日志配置
+  LOG_LEVEL: "info"
+  RUST_LOG: "experiment_data_plane=info,tower_http=debug"
+
+# Docker Compose 示例
+docker_compose_example: |
+  version: '3.8'
+  services:
+    control-plane:
+      build: ./control_plane
+      ports:
+        - "8080:8080"
+        - "8081:8081"
+      environment:
+        - SERVER_HOST=0.0.0.0
+        - SERVER_PORT=8080
+        - GRPC_PORT=8081
+      volumes:
+        - ./configs:/app/configs
+    
+    data-plane:
+      build: ./data_plane
+      ports:
+        - "8082:8080"
+        - "50051:50051"
+      environment:
+        - SERVER_HOST=0.0.0.0
+        - SERVER_PORT=8080
+        - GRPC_PORT=50051
+        - XDS_CONTROL_PLANE_ADDR=http://control-plane:8081
+        - XDS_NODE_ID=experiment-dataplane-docker
+        - XDS_CLUSTER=docker-cluster
+        - XDS_SERVICES=payment,recommendation
+        - USE_XDS=true
+      depends_on:
+        - control-plane
+
+# 监控和可观测性
+observability:
+  metrics:
+    # Prometheus 指标
+    prometheus:
+      enabled: true
+      port: 9090
+      path: "/metrics"
+    
+    # 关键指标
+    key_metrics:
+      - "experiment_requests_total"
+      - "experiment_request_duration_seconds"
+      - "xds_config_updates_total"
+      - "xds_connection_status"
+      - "active_experiments_count"
+      - "layer_evaluation_duration_seconds"
+  
+  tracing:
+    # 分布式追踪
+    jaeger:
+      enabled: false
+      endpoint: "http://localhost:14268/api/traces"
+    
+    # 日志级别
+    log_level: "info"
+    
+    # 追踪采样率
+    sampling_rate: 0.1
+
+# 性能调优
+performance:
+  # 连接池配置
+  connection_pool:
+    max_connections: 100
+    connection_timeout: "30s"
+    idle_timeout: "300s"
+  
+  # 缓存配置
+  cache:
+    layer_cache_size: 1000
+    experiment_cache_size: 5000
+    cache_ttl: "300s"
+  
+  # xDS 配置
+  xds:
+    # 重连间隔
+    reconnect_interval: "5s"
+    
+    # 心跳间隔
+    heartbeat_interval: "30s"
+    
+    # 请求超时
+    request_timeout: "10s"

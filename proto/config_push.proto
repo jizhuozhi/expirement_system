@@ -1,0 +1,720 @@
+syntax = "proto3";
+
+package experiment.config.v1;
+
+import "google/protobuf/any.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/georgeji/experiment-system/proto/config/v1;configv1";
+
+// Status message, simplified version of google.rpc.Status
+message Status {
+  int32 code = 1;
+  string message = 2;
+  repeated google.protobuf.Any details = 3;
+}
+
+// ConfigDiscoveryService - experiment system configuration discovery service
+// Based on Envoy xDS v3 API design, fully compatible with standard xDS protocol
+service ConfigDiscoveryService {
+  // State-of-the-World (SotW) xDS - bidirectional streaming RPC for full config sync
+  rpc StreamConfigs(stream DiscoveryRequest) returns (stream DiscoveryResponse);
+  
+  // Delta xDS - bidirectional streaming RPC for incremental config sync, more efficient
+  rpc DeltaConfigs(stream DeltaDiscoveryRequest) returns (stream DeltaDiscoveryResponse);
+  
+  // One-time config fetch (for debugging and initialization)
+  rpc FetchConfigs(DiscoveryRequest) returns (DiscoveryResponse);
+}
+
+// [simplified comment]
+// State-of-the-World (SotW) xDS Messages
+// Based on envoy.service.discovery.v3.DiscoveryRequest
+// [simplified comment]
+
+// DiscoveryRequest - xDS discovery request
+message DiscoveryRequest {
+  // Client's current known resource version info
+  // Empty string for first request, subsequent requests should fill in last successfully received version_info
+  string version_info = 1;
+  
+  // Node information of the requesting client
+  Node node = 2;
+  
+  // List of requested resource names
+  // Empty list means subscribe to all resources under this type_url
+  // Example: ["payment-layer", "recommendation-layer"]
+  repeated string resource_names = 3;
+  
+  // Resource type URL, identifies the requested resource type
+  // Example: "type.googleapis.com/experiment.config.v1.Layer"
+  string type_url = 4;
+  
+  // Response nonce, used for ACK/NACK mechanism
+  // Empty for first request, must fill in corresponding response nonce for ACK/NACK
+  string response_nonce = 5;
+  
+  // Error details, only filled for NACK
+  // For NACK, version_info should keep the last successful version
+  Status error_detail = 6;
+}
+
+// DiscoveryResponse - xDS discovery response
+message DiscoveryResponse {
+  // Version info for this response
+  // Client should echo this value in next request's version_info (for ACK)
+  string version_info = 1;
+  
+  // Resource list, using Any type to wrap specific resource objects
+  repeated google.protobuf.Any resources = 2;
+  
+  // Whether this is a canary version (experimental feature, usually false)
+  bool canary = 3;
+  
+  // Resource type URL, corresponds to type_url in request
+  string type_url = 4;
+  
+  // Unique nonce for this response
+  // Client must echo this value in next request's response_nonce
+  string nonce = 5;
+  
+  // Control plane identification info (optional)
+  ControlPlane control_plane = 6;
+}
+
+// [simplified comment]
+// Delta xDS Messages
+// Based on envoy.service.discovery.v3.DeltaDiscoveryRequest
+// [simplified comment]
+
+// DeltaDiscoveryRequest - incremental xDS discovery request
+message DeltaDiscoveryRequest {
+  // Node information of the requesting client
+  Node node = 1;
+  
+  // Resource type URL
+  string type_url = 2;
+  
+  // [simplified comment]
+  // key: 资源名称, value: 资源版本
+  // [simplified comment]
+  map<string, string> resource_versions = 3;
+  
+  // [simplified comment]
+  repeated string resource_names_subscribe = 4;
+  
+  // [simplified comment]
+  repeated string resource_names_unsubscribe = 5;
+  
+  // [simplified comment]
+  // [simplified comment]
+  map<string, string> initial_resource_versions = 6;
+  
+  // [simplified comment]
+  string response_nonce = 7;
+  
+  // [simplified comment]
+  Status error_detail = 8;
+  
+  // [simplified comment]
+  repeated ResourceLocator resource_locators_subscribe = 9;
+  
+  // [simplified comment]
+  repeated ResourceLocator resource_locators_unsubscribe = 10;
+}
+
+// DeltaDiscoveryResponse - 增量 xDS 发现响应
+message DeltaDiscoveryResponse {
+  // [simplified comment]
+  string system_version_info = 1;
+  
+  // [simplified comment]
+  repeated Resource resources = 2;
+  
+  // [simplified comment]
+  repeated string removed_resources = 3;
+  
+  // [simplified comment]
+  string nonce = 4;
+  
+  // [simplified comment]
+  string type_url = 5;
+  
+  // [simplified comment]
+  ControlPlane control_plane = 6;
+}
+
+// [simplified comment]
+// Resource and Locator Messages
+// [simplified comment]
+// [simplified comment]
+
+// Resource - Delta xDS 中的资源包装器
+message Resource {
+  // [simplified comment]
+  string name = 1;
+  
+  // [simplified comment]
+  repeated string aliases = 2;
+  
+  // [simplified comment]
+  string version = 3;
+  
+  // [simplified comment]
+  google.protobuf.Any resource = 4;
+  
+  // [simplified comment]
+  // [simplified comment]
+  google.protobuf.Duration ttl = 5;
+  
+  // [simplified comment]
+  CacheControl cache_control = 6;
+  
+  // [simplified comment]
+  map<string, string> metadata = 7;
+}
+
+// ResourceLocator - 资源定位器（支持动态参数）
+message ResourceLocator {
+  // [simplified comment]
+  string name = 1;
+  
+  // [simplified comment]
+  // [simplified comment]
+  map<string, string> dynamic_parameters = 2;
+}
+
+// CacheControl - 缓存控制策略
+message CacheControl {
+  // [simplified comment]
+  bool do_not_cache = 1;
+  
+  // [simplified comment]
+  google.protobuf.Duration max_age = 2;
+}
+
+// [simplified comment]
+// Node and Control Plane Messages
+// [simplified comment]
+// [simplified comment]
+
+// Node - 客户端节点信息
+message Node {
+  // [simplified comment]
+  // [simplified comment]
+  string id = 1;
+  
+  // [simplified comment]
+  // [simplified comment]
+  string cluster = 2;
+  
+  // [simplified comment]
+  // [simplified comment]
+  google.protobuf.Struct metadata = 3;
+  
+  // [simplified comment]
+  Locality locality = 4;
+  
+  // [simplified comment]
+  // [simplified comment]
+  string user_agent_name = 5;
+  
+  // [simplified comment]
+  // [simplified comment]
+  string user_agent_version = 6;
+  
+  // [simplified comment]
+  BuildVersion user_agent_build_version = 7;
+  
+  // [simplified comment]
+  repeated Extension extensions = 8;
+  
+  // [simplified comment]
+  // [simplified comment]
+  repeated string client_features = 9;
+  
+  // [simplified comment]
+  // [simplified comment]
+  repeated Address listening_addresses = 10;
+}
+
+// Locality - 地域信息
+message Locality {
+  // [simplified comment]
+  // [simplified comment]
+  string region = 1;
+  
+  // [simplified comment]
+  // [simplified comment]
+  string zone = 2;
+  
+  // [simplified comment]
+  // [simplified comment]
+  string sub_zone = 3;
+}
+
+// BuildVersion - 构建版本信息
+message BuildVersion {
+  // [simplified comment]
+  SemanticVersion version = 1;
+  
+  // [simplified comment]
+  google.protobuf.Struct metadata = 2;
+}
+
+// SemanticVersion - 语义化版本
+message SemanticVersion {
+  // [simplified comment]
+  uint32 major_number = 1;
+  
+  // [simplified comment]
+  uint32 minor_number = 2;
+  
+  // [simplified comment]
+  uint32 patch = 3;
+}
+
+// Extension - 扩展信息
+message Extension {
+  // [simplified comment]
+  string name = 1;
+  
+  // [simplified comment]
+  string category = 2;
+  
+  // [simplified comment]
+  string version = 3;
+  
+  // [simplified comment]
+  bool disabled = 4;
+  
+  // [simplified comment]
+  google.protobuf.Any typed_config = 5;
+}
+
+// Address - 网络地址
+message Address {
+  oneof address {
+    SocketAddress socket_address = 1;
+    Pipe pipe = 2;
+  }
+}
+
+// SocketAddress - Socket 地址
+message SocketAddress {
+  // [simplified comment]
+  enum Protocol {
+    TCP = 0;
+    UDP = 1;
+  }
+  
+  // [simplified comment]
+  Protocol protocol = 1;
+  
+  // [simplified comment]
+  string address = 2;
+  
+  // [simplified comment]
+  oneof port_specifier {
+    uint32 port_value = 3;      // [simplified comment]
+    string named_port = 4;      // [simplified comment]
+  }
+  
+  // [simplified comment]
+  string resolver_name = 5;
+  
+  // IPv4 兼容模式（可选）
+  bool ipv4_compat = 6;
+}
+
+// Pipe - 管道地址（Unix Domain Socket）
+message Pipe {
+  // [simplified comment]
+  string path = 1;
+  
+  // [simplified comment]
+  uint32 mode = 2;
+}
+
+// ControlPlane - 控制面标识信息
+message ControlPlane {
+  // [simplified comment]
+  // [simplified comment]
+  string identifier = 1;
+}
+
+// [simplified comment]
+// Experiment System Resource Types
+// [simplified comment]
+// [simplified comment]
+// [simplified comment]
+// [simplified comment]
+
+// Layer - 实验分层配置资源
+// [simplified comment]
+message Layer {
+  // Layer 唯一标识符（必填）
+  string layer_id = 1;
+  
+  // Layer 版本（建议填写）
+  string version = 2;
+  
+  // Layer 优先级，数值越大优先级越高（必填）
+  int32 priority = 3;
+  
+  // [simplified comment]
+  // [simplified comment]
+  string hash_key = 4;
+  
+  // [simplified comment]
+  // [simplified comment]
+  optional string salt = 5;
+  
+  // Bucket 范围列表（必填）
+  // [simplified comment]
+  repeated BucketRange ranges = 6;
+  
+  // [simplified comment]
+  bool enabled = 7;
+  
+  // [simplified comment]
+  google.protobuf.Timestamp created_at = 8;
+  
+  // [simplified comment]
+  google.protobuf.Timestamp updated_at = 9;
+  
+  // Layer 标签，用于分类和过滤（可选）
+  map<string, string> labels = 10;
+  
+  // Layer 描述信息（可选）
+  string description = 11;
+  
+  // [simplified comment]
+  // [simplified comment]
+  repeated string services = 12;
+  
+  // Layer 配置元数据（可选）
+  google.protobuf.Struct metadata = 13;
+}
+
+// BucketRange - Bucket 范围映射
+// [simplified comment]
+message BucketRange {
+  // [simplified comment]
+  uint32 start = 1;
+  
+  // [simplified comment]
+  uint32 end = 2;
+  
+  // [simplified comment]
+  int64 vid = 3;
+  
+  // Bucket 权重（可选，用于加权分配）
+  optional uint32 weight = 4;
+  
+  // Bucket 标签（可选）
+  map<string, string> labels = 5;
+}
+
+// Experiment - 实验配置资源
+// [simplified comment]
+message Experiment {
+  // [simplified comment]
+  int64 eid = 1;
+  
+  // [simplified comment]
+  string service = 2;
+  
+  // [simplified comment]
+  // JSON 格式的规则定义，用于流量过滤
+  optional string rule = 3;
+  
+  // [simplified comment]
+  repeated Variant variants = 4;
+  
+  // [simplified comment]
+  google.protobuf.Timestamp created_at = 5;
+  
+  // [simplified comment]
+  google.protobuf.Timestamp updated_at = 6;
+  
+  // [simplified comment]
+  ExperimentStatus status = 7;
+  
+  // [simplified comment]
+  ExperimentType type = 8;
+  
+  // [simplified comment]
+  map<string, string> labels = 9;
+  
+  // [simplified comment]
+  string description = 10;
+  
+  // [simplified comment]
+  optional google.protobuf.Timestamp start_time = 11;
+  
+  // [simplified comment]
+  optional google.protobuf.Timestamp end_time = 12;
+  
+  // [simplified comment]
+  string owner = 13;
+  
+  // [simplified comment]
+  google.protobuf.Struct metadata = 14;
+}
+
+// Variant - 实验变体定义
+message Variant {
+  // [simplified comment]
+  int64 vid = 1;
+  
+  // [simplified comment]
+  string params = 2;
+  
+  // [simplified comment]
+  string name = 3;
+  
+  // [simplified comment]
+  string description = 4;
+  
+  // [simplified comment]
+  bool is_control = 5;
+  
+  // [simplified comment]
+  optional uint32 weight = 6;
+  
+  // [simplified comment]
+  map<string, string> labels = 7;
+  
+  // [simplified comment]
+  google.protobuf.Struct metadata = 8;
+}
+
+// ExperimentStatus - 实验状态枚举
+enum ExperimentStatus {
+  EXPERIMENT_STATUS_UNSPECIFIED = 0;
+  EXPERIMENT_STATUS_DRAFT = 1;       // [simplified comment]
+  EXPERIMENT_STATUS_RUNNING = 2;     // [simplified comment]
+  EXPERIMENT_STATUS_PAUSED = 3;      // [simplified comment]
+  EXPERIMENT_STATUS_COMPLETED = 4;   // [simplified comment]
+  EXPERIMENT_STATUS_ARCHIVED = 5;    // [simplified comment]
+  EXPERIMENT_STATUS_FAILED = 6;      // [simplified comment]
+}
+
+// ExperimentType - 实验类型枚举
+enum ExperimentType {
+  EXPERIMENT_TYPE_UNSPECIFIED = 0;
+  EXPERIMENT_TYPE_AB_TEST = 1;       // A/B 测试
+  EXPERIMENT_TYPE_MULTIVARIATE = 2;  // [simplified comment]
+  EXPERIMENT_TYPE_FEATURE_FLAG = 3;  // [simplified comment]
+  EXPERIMENT_TYPE_ROLLOUT = 4;       // [simplified comment]
+  EXPERIMENT_TYPE_CANARY = 5;        // [simplified comment]
+}
+
+// [simplified comment]
+// Advanced xDS Features (Envoy Compatible)
+// [simplified comment]
+
+// ConfigDump - 配置转储（用于调试和状态查询）
+// [simplified comment]
+message ConfigDump {
+  // [simplified comment]
+  google.protobuf.Timestamp timestamp = 1;
+  
+  // [simplified comment]
+  Node node = 2;
+  
+  // [simplified comment]
+  repeated TypedConfigDump configs = 3;
+}
+
+// TypedConfigDump - 按类型分组的配置转储
+message TypedConfigDump {
+  // [simplified comment]
+  string type_url = 1;
+  
+  // [simplified comment]
+  google.protobuf.Timestamp last_updated = 2;
+  
+  // [simplified comment]
+  repeated google.protobuf.Any static_configs = 3;
+  
+  // [simplified comment]
+  repeated DynamicConfig dynamic_configs = 4;
+}
+
+// DynamicConfig - 动态配置状态
+message DynamicConfig {
+  // [simplified comment]
+  string version_info = 1;
+  
+  // [simplified comment]
+  google.protobuf.Any config = 2;
+  
+  // [simplified comment]
+  google.protobuf.Timestamp last_updated = 3;
+  
+  // [simplified comment]
+  ConfigStatus config_status = 4;
+  
+  // [simplified comment]
+  optional Status error = 5;
+}
+
+// ConfigStatus - 配置状态枚举
+enum ConfigStatus {
+  CONFIG_STATUS_UNKNOWN = 0;
+  CONFIG_STATUS_SYNCED = 1;      // [simplified comment]
+  CONFIG_STATUS_NOT_SENT = 2;    // [simplified comment]
+  CONFIG_STATUS_STALE = 3;       // [simplified comment]
+  CONFIG_STATUS_ERROR = 4;       // [simplified comment]
+}
+
+// [simplified comment]
+// Load Reporting and Observability (Optional)
+// [simplified comment]
+
+// LoadStatsRequest - 负载统计请求
+// [simplified comment]
+message LoadStatsRequest {
+  // [simplified comment]
+  Node node = 1;
+  
+  // [simplified comment]
+  repeated ClusterStats cluster_stats = 2;
+}
+
+// LoadStatsResponse - 负载统计响应
+message LoadStatsResponse {
+  // [simplified comment]
+  repeated string clusters = 1;
+  
+  // [simplified comment]
+  google.protobuf.Duration load_reporting_interval = 2;
+}
+
+// ClusterStats - 集群统计信息
+message ClusterStats {
+  // [simplified comment]
+  string cluster_name = 1;
+  
+  // [simplified comment]
+  google.protobuf.Timestamp timestamp = 2;
+  
+  // [simplified comment]
+  repeated UpstreamLocalityStats upstream_locality_stats = 3;
+  
+  // [simplified comment]
+  uint64 total_requests = 4;
+  
+  // [simplified comment]
+  uint64 dropped_requests = 5;
+}
+
+// UpstreamLocalityStats - 上游地域统计
+message UpstreamLocalityStats {
+  // [simplified comment]
+  Locality locality = 1;
+  
+  // [simplified comment]
+  uint64 total_requests = 2;
+  
+  // [simplified comment]
+  uint64 total_successful_requests = 3;
+  
+  // [simplified comment]
+  uint64 total_error_requests = 4;
+  
+  // [simplified comment]
+  uint64 total_issued_time = 5;
+}
+
+// [simplified comment]
+// Health Check and Status Reporting
+// [simplified comment]
+
+// HealthCheckRequest - 健康检查请求
+message HealthCheckRequest {
+  // [simplified comment]
+  string service = 1;
+}
+
+// HealthCheckResponse - 健康检查响应
+message HealthCheckResponse {
+  // [simplified comment]
+  enum ServingStatus {
+    UNKNOWN = 0;
+    SERVING = 1;           // [simplified comment]
+    NOT_SERVING = 2;       // [simplified comment]
+    SERVICE_UNKNOWN = 3;   // [simplified comment]
+  }
+  
+  ServingStatus status = 1;
+}
+
+// StatusRequest - 状态查询请求
+message StatusRequest {
+  // [simplified comment]
+  repeated string node_ids = 1;
+  
+  // [simplified comment]
+  repeated string type_urls = 2;
+}
+
+// StatusResponse - 状态查询响应
+message StatusResponse {
+  // [simplified comment]
+  repeated NodeStatus node_statuses = 1;
+}
+
+// NodeStatus - 节点状态信息
+message NodeStatus {
+  // [simplified comment]
+  Node node = 1;
+  
+  // [simplified comment]
+  ConnectionState connection_state = 2;
+  
+  // [simplified comment]
+  google.protobuf.Timestamp last_connected = 3;
+  
+  // [simplified comment]
+  repeated ResourceSyncStatus resource_sync_statuses = 4;
+}
+
+// ConnectionState - 连接状态枚举
+enum ConnectionState {
+  CONNECTION_STATE_UNKNOWN = 0;
+  CONNECTION_STATE_CONNECTED = 1;    // [simplified comment]
+  CONNECTION_STATE_DISCONNECTED = 2; // [simplified comment]
+  CONNECTION_STATE_CONNECTING = 3;   // [simplified comment]
+}
+
+// ResourceSyncStatus - 资源同步状态
+message ResourceSyncStatus {
+  // [simplified comment]
+  string type_url = 1;
+  
+  // [simplified comment]
+  SyncStatus sync_status = 2;
+  
+  // [simplified comment]
+  google.protobuf.Timestamp last_synced = 3;
+  
+  // [simplified comment]
+  string version_info = 4;
+  
+  // [simplified comment]
+  optional Status error = 5;
+}
+
+// SyncStatus - 同步状态枚举
+enum SyncStatus {
+  SYNC_STATUS_UNKNOWN = 0;
+  SYNC_STATUS_SYNCED = 1;      // [simplified comment]
+  SYNC_STATUS_SYNCING = 2;     // [simplified comment]
+  SYNC_STATUS_ERROR = 3;       // [simplified comment]
+  SYNC_STATUS_STALE = 4;       // [simplified comment]
+}

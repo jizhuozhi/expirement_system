@@ -5,7 +5,7 @@ use rand::Rng;
 use serde_json::json;
 use tempfile::TempDir;
 
-/// Create random test catalog
+/// Benchmark implementation
 fn create_random_catalog(num_experiments: usize) -> (TempDir, ExperimentCatalog) {
     let mut rng = rand::thread_rng();
     let temp_dir = TempDir::new().unwrap();
@@ -34,8 +34,11 @@ fn create_random_catalog(num_experiments: usize) -> (TempDir, ExperimentCatalog)
     (temp_dir, catalog)
 }
 
-/// Create random layers with various bucket distributions
-async fn create_random_layers(num_layers: usize, catalog: &ExperimentCatalog) -> (TempDir, LayerManager) {
+/// Benchmark implementation
+async fn create_random_layers(
+    num_layers: usize,
+    catalog: &ExperimentCatalog,
+) -> (TempDir, LayerManager) {
     let mut rng = rand::thread_rng();
     let temp_dir = TempDir::new().unwrap();
     let layers_dir = temp_dir.path().join("layers");
@@ -73,7 +76,7 @@ async fn create_random_layers(num_layers: usize, catalog: &ExperimentCatalog) ->
     (temp_dir, manager)
 }
 
-/// Benchmark: Layer filtering by service
+/// Benchmark implementation
 fn bench_layer_filtering(c: &mut Criterion) {
     let mut group = c.benchmark_group("layer_filtering");
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -98,18 +101,14 @@ fn bench_layer_filtering(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark: Bucket calculation
+/// Benchmark implementation
 fn bench_bucket_calculation(c: &mut Criterion) {
     let mut group = c.benchmark_group("bucket_calculation");
     let mut rng = rand::thread_rng();
 
-    let users: Vec<String> = (0..1000)
-        .map(|i| format!("user_{}", i))
-        .collect();
+    let users: Vec<String> = (0..1000).map(|i| format!("user_{}", i)).collect();
 
-    let salts: Vec<String> = (0..100)
-        .map(|i| format!("salt_{}", i))
-        .collect();
+    let salts: Vec<String> = (0..100).map(|i| format!("salt_{}", i)).collect();
 
     group.bench_function("hash_to_bucket", |b| {
         b.iter(|| {
@@ -122,7 +121,7 @@ fn bench_bucket_calculation(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark: Layer priority sorting
+/// Benchmark implementation
 fn bench_layer_sorting(c: &mut Criterion) {
     let mut group = c.benchmark_group("layer_sorting");
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -136,7 +135,7 @@ fn bench_layer_sorting(c: &mut Criterion) {
             num_layers,
             |b, _| {
                 b.iter(|| {
-                    // Get layer IDs and count (simulating sorted access)
+                    // Benchmark implementation
                     let layer_ids = manager.get_layer_ids();
                     black_box(layer_ids.len());
                 });
